@@ -1,8 +1,12 @@
 # System Data Cleaner
 
+**English** · [Русский](README.ru.md)
+
 Free up the mysterious **System Data** blob on your Mac.
 
 When About This Mac → Storage shows tens of gigabytes of “System Data”, it’s usually caches, Xcode leftovers, browser junk, Docker layers, and hidden Library folders — not the OS itself. **System Data Cleaner** finds that clutter, shows clear sizes, and deletes only what you select.
+
+The app UI follows your **macOS system language** (English / Russian).
 
 ![Main window](docs/screenshots/main.png)
 

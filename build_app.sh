@@ -68,6 +68,14 @@ cp "$ROOT/SystemDataCleaner/Info.plist" "$CONTENTS/Info.plist"
 echo -n "APPL????" > "$CONTENTS/PkgInfo"
 cp "$ROOT/Resources/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 
+# Localizations (system language)
+if [[ -d "$ROOT/packaging/lproj/en.lproj" ]]; then
+  ditto "$ROOT/packaging/lproj/en.lproj" "$RESOURCES/en.lproj"
+fi
+if [[ -d "$ROOT/packaging/lproj/ru.lproj" ]]; then
+  ditto "$ROOT/packaging/lproj/ru.lproj" "$RESOURCES/ru.lproj"
+fi
+
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
 if [[ -x /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister ]]; then

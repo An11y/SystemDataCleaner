@@ -60,13 +60,13 @@ struct ContentView: View {
 
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.isBusy {
-                    Button("Отмена", action: model.cancelWork)
+                    Button(L10n.cancel, action: model.cancelWork)
                 } else {
-                    Button("Умная", action: model.selectSmartRecommended)
+                    Button(L10n.smart, action: model.selectSmartRecommended)
                         .disabled(model.categories.isEmpty)
-                        .help("Безопасные + крупные осторожные · ⌘⇧2")
+                        .help(L10n.smartHelp)
 
-                    Button("Сканировать", action: model.scan)
+                    Button(L10n.scan, action: model.scan)
                         .help("⌘R")
                 }
             }
@@ -74,7 +74,7 @@ struct ContentView: View {
         .sheet(isPresented: $model.showConfirm) {
             ConfirmSheet(model: model)
         }
-        .alert("Ошибка", isPresented: Binding(
+        .alert(L10n.errorTitle, isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
         )) {
@@ -120,23 +120,25 @@ struct ContentView: View {
     private var metrics: some View {
         HStack(spacing: AppTheme.spaceSM) {
             metricTile(
-                label: "Найдено",
+                label: L10n.found,
                 value: model.totalBytes > 0 ? model.formattedTotal : "—",
-                hint: model.nonEmptyCount > 0 ? "\(model.nonEmptyCount) категорий" : "после скана",
+                hint: model.nonEmptyCount > 0 ? L10n.categoriesCount(model.nonEmptyCount) : L10n.afterScan,
                 tint: AppTheme.accent
             )
             metricTile(
-                label: "Выбрано",
-                value: model.hasSelection ? model.formattedSelected : "0 Б",
+                label: L10n.selected,
+                value: model.hasSelection
+                    ? model.formattedSelected
+                    : ByteCountFormatter.string(fromByteCount: 0, countStyle: .file),
                 hint: model.hasSelection
-                    ? "\(model.selectedCategoryCount) кат. · \(Int(model.selectionShare * 100))%"
-                    : "ничего",
+                    ? L10n.categoriesShare(model.selectedCategoryCount, Int(model.selectionShare * 100))
+                    : L10n.nothing,
                 tint: model.hasSelection ? AppTheme.warn : AppTheme.textSecondary
             )
             metricTile(
-                label: "Свободно",
+                label: L10n.free,
                 value: model.formattedFreeDisk ?? "—",
-                hint: "на диске",
+                hint: L10n.onDisk,
                 tint: AppTheme.textSecondary
             )
         }
@@ -190,7 +192,7 @@ struct ContentView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(searchFocused ? AppTheme.accent : AppTheme.textTertiary)
                 .font(.system(size: 12, weight: .semibold))
-            TextField("Поиск…", text: $model.searchText)
+            TextField(L10n.searchPlaceholder, text: $model.searchText)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 .font(AppTheme.body(13))
@@ -269,7 +271,7 @@ struct ContentView: View {
                         .background(fieldBackground(focused: false))
                 }
                 .menuStyle(.borderlessButton)
-                .help("Сортировка: \(model.sortMode.title)")
+                .help("\(L10n.sortHelpPrefix): \(model.sortMode.title)")
             }
         }
     }
@@ -277,7 +279,7 @@ struct ContentView: View {
     private var selectMenu: some View {
         Group {
             if model.suppressLifecycleHooks {
-                Text("Выбор")
+                Text(L10n.selectMenu)
                     .font(AppTheme.body(12, weight: .semibold))
                     .foregroundStyle(AppTheme.accent)
                     .padding(.horizontal, AppTheme.spaceSM)
@@ -285,13 +287,13 @@ struct ContentView: View {
                     .background(AppTheme.accentSoft, in: RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous))
             } else {
                 Menu {
-                    Button("Умная очистка", action: model.selectSmartRecommended)
-                    Button("Только безопасные", action: model.selectSafeOnly)
-                    Button("Выбрать всё с размером", action: model.selectAllJunk)
+                    Button(L10n.smartClean, action: model.selectSmartRecommended)
+                    Button(L10n.safeOnly, action: model.selectSafeOnly)
+                    Button(L10n.selectAllWithSize, action: model.selectAllJunk)
                     Divider()
-                    Button("Снять всё", action: model.deselectAll)
+                    Button(L10n.deselectAll, action: model.deselectAll)
                 } label: {
-                    Text("Выбор")
+                    Text(L10n.selectMenu)
                         .font(AppTheme.body(12, weight: .semibold))
                         .foregroundStyle(AppTheme.accent)
                         .padding(.horizontal, AppTheme.spaceSM)
@@ -313,12 +315,7 @@ struct ContentView: View {
     }
 
     private func filterShort(_ f: ListFilter) -> String {
-        switch f {
-        case .withSize: return "С размером"
-        case .selected: return "Выбрано"
-        case .all: return "Все"
-        case .risky: return "Риск"
-        }
+        L10n.filterShort(f)
     }
 
     // MARK: - List
@@ -418,7 +415,7 @@ struct ContentView: View {
     private var scanningCard: some View {
         VStack(spacing: AppTheme.spaceSM) {
             ProgressView().tint(AppTheme.accent)
-            Text("Сканирование… \(Int(model.scanProgress * 100))%")
+            Text(L10n.scanningProgress(Int(model.scanProgress * 100)))
                 .font(AppTheme.body(13, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
                 .monospacedDigit()
@@ -429,9 +426,9 @@ struct ContentView: View {
 
     private var emptyFilter: some View {
         VStack(spacing: AppTheme.spaceXS) {
-            Text("Ничего не найдено")
+            Text(L10n.nothingFound)
                 .font(AppTheme.body(14, weight: .semibold))
-            Button("Сбросить фильтр") {
+            Button(L10n.resetFilter) {
                 model.searchText = ""
                 model.listFilter = .withSize
             }
@@ -449,14 +446,14 @@ struct ContentView: View {
             Image(systemName: "internaldrive")
                 .font(.system(size: 44, weight: .ultraLight))
                 .foregroundStyle(AppTheme.accent)
-            Text("Очистка системных данных")
+            Text(L10n.emptyTitle)
                 .font(AppTheme.title(20))
-            Text("Найдём кэши, логи, Xcode и скрытые папки.\nУдаление — только после подтверждения.")
+            Text(L10n.emptyBody)
                 .font(AppTheme.body(13))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
             Button(action: model.scan) {
-                Text("Сканировать диск")
+                Text(L10n.scanDisk)
                     .font(AppTheme.body(14, weight: .bold))
                     .foregroundStyle(AppTheme.onAccent)
                     .padding(.horizontal, 24)
@@ -477,14 +474,14 @@ struct ContentView: View {
             if let freed = model.lastFreed {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(AppTheme.accent)
-                Text("Освобождено \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))")
+                Text(L10n.freed(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)))
                     .font(AppTheme.body(13, weight: .semibold))
                     .foregroundStyle(AppTheme.accent)
             } else if model.hasSelection {
-                Text("К удалению · \(model.formattedSelected)")
+                Text(L10n.toDeleteSize(model.formattedSelected))
                     .font(AppTheme.body(13, weight: .semibold))
             } else {
-                Text("Выберите категории или нажмите «Умная»")
+                Text(L10n.pickOrSmart)
                     .font(AppTheme.body(12))
                     .foregroundStyle(AppTheme.textSecondary)
             }
@@ -494,7 +491,7 @@ struct ContentView: View {
             Button(action: model.requestClean) {
                 HStack(spacing: 6) {
                     Image(systemName: model.isCleaning ? "hourglass" : "trash.fill")
-                    Text(model.isCleaning ? "Чищу…" : "Удалить")
+                    Text(model.isCleaning ? L10n.cleaning : L10n.delete)
                         .font(AppTheme.body(13, weight: .bold))
                     if model.hasSelection && !model.isCleaning {
                         Text(model.formattedSelected)
@@ -543,14 +540,14 @@ struct ContentView: View {
             Image(systemName: "lock.shield.fill")
                 .foregroundStyle(AppTheme.warn)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Нужен Full Disk Access")
+                Text(L10n.fdaTitle)
                     .font(AppTheme.body(12, weight: .semibold))
-                Text("Без доступа часть папок может быть пустой.")
+                Text(L10n.fdaBody)
                     .font(AppTheme.body(11))
                     .foregroundStyle(AppTheme.textSecondary)
             }
             Spacer(minLength: AppTheme.spaceXS)
-            Button("Настройки") { model.openFullDiskAccessSettings() }
+            Button(L10n.settings) { model.openFullDiskAccessSettings() }
                 .buttonStyle(.plain)
                 .font(AppTheme.body(12, weight: .bold))
                 .foregroundStyle(AppTheme.accent)
@@ -592,9 +589,9 @@ struct ConfirmSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Удалить выбранное?")
+                    Text(L10n.confirmTitle)
                         .font(AppTheme.title(18))
-                    Text("Отменить будет нельзя")
+                    Text(L10n.confirmSubtitle)
                         .font(AppTheme.body(12))
                         .foregroundStyle(AppTheme.textSecondary)
                 }
@@ -618,7 +615,7 @@ struct ConfirmSheet: View {
 
             HStack(spacing: AppTheme.spaceSM) {
                 Button { dismiss() } label: {
-                    Text("Отмена")
+                    Text(L10n.cancel)
                         .font(AppTheme.body(13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, AppTheme.spaceSM)
@@ -630,7 +627,7 @@ struct ConfirmSheet: View {
                     dismiss()
                     model.confirmClean()
                 } label: {
-                    Text("Удалить")
+                    Text(L10n.delete)
                         .font(AppTheme.body(13, weight: .bold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, AppTheme.spaceSM)
@@ -662,7 +659,7 @@ struct ConfirmSheet: View {
                     .padding(.vertical, 2)
                 }
                 if group.rows.count > 8 {
-                    Text("и ещё \(group.rows.count - 8)…")
+                    Text(L10n.andMore(group.rows.count - 8))
                         .font(AppTheme.body(11))
                         .foregroundStyle(AppTheme.textSecondary)
                 }
@@ -679,11 +676,7 @@ struct ConfirmSheet: View {
     }
 
     private func riskTitle(_ risk: RiskLevel) -> String {
-        switch risk {
-        case .safe: return "Безопасно"
-        case .caution: return "Осторожно"
-        case .danger: return "Риск"
-        }
+        L10n.riskTitle(risk)
     }
 }
 
@@ -808,12 +801,12 @@ struct CategoryRow: View {
 
                     if scan.items.isEmpty {
                         HStack {
-                            Text(scan.exists ? "Удаляется целиком" : "Путь не найден")
+                            Text(scan.exists ? L10n.removesWhole : L10n.pathMissing)
                                 .font(AppTheme.body(11))
                                 .foregroundStyle(AppTheme.textSecondary)
                             Spacer()
                             if let path = scan.paths.first {
-                                Button("В Finder") { onReveal(path) }
+                                Button(L10n.showInFinder) { onReveal(path) }
                                     .buttonStyle(.plain)
                                     .font(AppTheme.body(11, weight: .semibold))
                                     .foregroundStyle(AppTheme.accent)
@@ -828,7 +821,7 @@ struct CategoryRow: View {
                             )
                         }
                         if scan.items.count > 50 {
-                            Text("Показаны 50 из \(scan.items.count)")
+                            Text(L10n.showingOf(50, scan.items.count))
                                 .font(AppTheme.body(10))
                                 .foregroundStyle(AppTheme.textTertiary)
                                 .padding(.top, 4)

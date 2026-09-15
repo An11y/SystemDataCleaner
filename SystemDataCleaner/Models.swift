@@ -45,110 +45,7 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    var title: String {
-        switch self {
-        case .userCaches: return "Кэши приложений"
-        case .userLogs: return "Логи"
-        case .temporary: return "Временные файлы"
-        case .trash: return "Корзина"
-        case .quickLook: return "Quick Look thumbnails"
-        case .fontCaches: return "Кэш шрифтов"
-        case .savedState: return "Saved Application State"
-        case .mediaAnalysis: return "Photos media analysis"
-        case .appleIntelligence: return "Apple Intelligence / Siri TTS"
-        case .iosSoftwareUpdates: return "Прошивки iOS (кэш)"
-        case .xcodeDerivedData: return "Xcode DerivedData"
-        case .xcodeArchives: return "Xcode Archives"
-        case .iosDeviceSupport: return "iOS DeviceSupport"
-        case .simulatorCaches: return "Кэш симуляторов"
-        case .unavailableSimulators: return "Мёртвые симуляторы"
-        case .swiftPMCache: return "SwiftPM cache"
-        case .xcodeCaches: return "Кэши Xcode"
-        case .carthage: return "Carthage"
-        case .iosBackups: return "Бэкапы iPhone/iPad"
-        case .timeMachineSnapshots: return "Снапшоты Time Machine"
-        case .homebrew: return "Homebrew cache"
-        case .brewCleanup: return "brew cleanup"
-        case .npm: return "npm / yarn / pnpm"
-        case .bun: return "Bun"
-        case .deno: return "Deno cache"
-        case .cocoapods: return "CocoaPods"
-        case .gradle: return "Gradle / Android"
-        case .maven: return "Maven (.m2)"
-        case .pip: return "pip"
-        case .poetry: return "Poetry cache"
-        case .conda: return "Conda / pkgs"
-        case .goCache: return "Go module cache"
-        case .cargo: return "Rust / Cargo"
-        case .flutter: return "Flutter / Dart pub"
-        case .composer: return "PHP Composer"
-        case .nuget: return "NuGet cache"
-        case .docker: return "Docker prune"
-        case .playwright: return "Playwright"
-        case .cypress: return "Cypress cache"
-        case .puppeteer: return "Puppeteer / Chrome for Testing"
-        case .jetbrainsCaches: return "JetBrains"
-        case .vscodeCaches: return "VS Code / Cursor / Windsurf"
-        case .androidStudio: return "Android Studio caches"
-        case .aiDevTools: return "AI-агенты"
-        case .mlModels: return "ML-модели (Ollama и др.)"
-        case .browserCaches: return "Кэши браузеров"
-        case .messengerCaches: return "Telegram / Discord / Slack"
-        case .spotifyCache: return "Spotify cache"
-        case .adobeCache: return "Adobe cache"
-        case .zoomCache: return "Zoom cache"
-        case .steamCache: return "Steam / shaders"
-        case .unityCache: return "Unity cache"
-        case .unrealCache: return "Unreal Engine cache"
-        case .blenderCache: return "Blender cache"
-        case .figmaCache: return "Figma cache"
-        case .teamsCache: return "Microsoft Teams"
-        case .notionCache: return "Notion cache"
-        case .dropboxCache: return "Dropbox cache"
-        case .iMessageAttachments: return "Вложения Сообщений"
-        case .bazelCache: return "Bazel cache"
-        case .sbtCache: return "SBT / Ivy cache"
-        case .electronApps: return "Electron / helper caches"
-        case .nvmCache: return "nvm / fnm старые Node"
-        case .webkitCache: return "WebKit (общий кэш)"
-        case .iconServices: return "IconServices / иконки"
-        case .coreSuggestions: return "Siri Suggestions"
-        case .iCloudDaemonCache: return "bird / cloudd кэш"
-        case .spotlightIndexer: return "Spotlight индекс"
-        case .appleMediaApps: return "Music / TV / Podcasts"
-        case .mapsCache: return "Карты / геоаналитика"
-        case .screenTimeKnowledge: return "Screen Time / Knowledge"
-        case .mailCaches: return "Кэш Mail.app"
-        case .booksCache: return "Apple Books"
-        case .mobileAssetCache: return "MobileAsset кэш"
-        case .speechVoicePacks: return "Голоса / диктовка"
-        case .parallelsVM: return "Parallels кэш"
-        case .proVideoApps: return "Final Cut / Logic"
-        case .javaJVM: return "Java / JVM"
-        case .pyenvRvmAsdf: return "Старые Python / Ruby"
-        case .gcloudKubeColima: return "gcloud / kube / Colima"
-        case .launcherCaches: return "Raycast / Alfred"
-        case .obsidianNotes: return "Obsidian cache"
-        case .onePasswordLogs: return "1Password logs"
-        case .utmVM: return "UTM cache"
-        case .groupContainerCaches: return "Group Containers Cache"
-        case .documentRevisions: return ".DocumentRevisions-V100"
-        case .containerAppCaches: return "Sandbox app Caches"
-        case .oldLargeDownloads: return "Крупные/старые Загрузки"
-        case .chromeProfilesDeep: return "Профили Chrome / Arc / Edge"
-        case .officeCaches: return "Microsoft Office / Outlook"
-        case .whatsappMedia: return "WhatsApp Media"
-        case .cloudStorageCaches: return "Облачные кэши"
-        case .orphanedAppSupport: return "Сироты Application Support"
-        case .uvRyeCache: return "uv / rye cache"
-        case .gitLfsCache: return "Git LFS / GitHub Desktop"
-        case .crashReportsDeep: return "Старые crash-отчёты"
-        case .xcodeOldDeviceSupport: return "Старый DeviceSupport"
-        case .installerImages: return "DMG / PKG в Загрузках"
-        case .mailDownloads: return "Вложения Mail"
-        case .projectArtifacts: return "Артефакты в ~/Projects"
-        }
-    }
+    var title: String { L10n.categoryTitle(self) }
 
     var subtitle: String {
         switch self {
@@ -162,9 +59,9 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .mediaAnalysis: return "mediaanalysisd / Photos"
         case .appleIntelligence: return "SiriTTS, model caches"
         case .iosSoftwareUpdates: return "iPhone Software Updates"
-        case .xcodeDerivedData: return "сборки Xcode"
+        case .xcodeDerivedData: return L10n.t("Xcode build products", "сборки Xcode")
         case .xcodeArchives: return ".xcarchive"
-        case .iosDeviceSupport: return "символы устройств"
+        case .iosDeviceSupport: return L10n.t("device symbols", "символы устройств")
         case .simulatorCaches: return "CoreSimulator/Caches"
         case .unavailableSimulators: return "simctl delete unavailable"
         case .swiftPMCache: return "org.swift.swiftpm"
@@ -198,7 +95,7 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .aiDevTools: return "claude / codex / cursor worker"
         case .mlModels: return "ollama / huggingface / torch"
         case .browserCaches: return "Chrome / Firefox / Edge / Brave / Arc"
-        case .messengerCaches: return "мессенджеры"
+        case .messengerCaches: return L10n.t("messengers", "мессенджеры")
         case .spotifyCache: return "Spotify Persistence"
         case .adobeCache: return "Adobe cache"
         case .zoomCache: return "Zoom data cache"
@@ -213,7 +110,7 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .iMessageAttachments: return "~/Library/Messages/Attachments"
         case .bazelCache: return "~/.cache/bazel"
         case .sbtCache: return ".ivy2 / .sbt"
-        case .electronApps: return "общие Electron Cache"
+        case .electronApps: return L10n.t("shared Electron Cache", "общие Electron Cache")
         case .nvmCache: return ".nvm/versions (старые)"
         case .webkitCache: return "Library/Caches/WebKit"
         case .iconServices: return "iconservices.store"
@@ -231,20 +128,20 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .proVideoApps: return "Render Files / ProApps"
         case .javaJVM: return "Oracle / OpenJDK"
         case .pyenvRvmAsdf: return "pyenv / rvm / asdf / mise"
-        case .gcloudKubeColima: return "облако / контейнеры"
-        case .launcherCaches: return "лаунчеры macOS"
+        case .gcloudKubeColima: return L10n.t("cloud / containers", "облако / контейнеры")
+        case .launcherCaches: return L10n.t("macOS launchers", "лаунчеры macOS")
         case .obsidianNotes: return "IndexedDB / GPUCache"
         case .onePasswordLogs: return "1Password / 2BUA8C4S2C"
         case .utmVM: return "UTM Documents cache"
-        case .groupContainerCaches: return "скан GC */Library/Caches"
-        case .documentRevisions: return "версии файлов macOS"
+        case .groupContainerCaches: return L10n.t("scan GC */Library/Caches", "скан GC */Library/Caches")
+        case .documentRevisions: return L10n.t("macOS file versions", "версии файлов macOS")
         case .containerAppCaches: return "Containers */Data/Caches"
         case .oldLargeDownloads: return ">50 МБ или старше 14 дней"
         case .chromeProfilesDeep: return "Profile */Code Cache, GPU…"
         case .officeCaches: return "Office / Outlook / OneDrive"
         case .whatsappMedia: return "WhatsApp Media folders"
         case .cloudStorageCaches: return "iCloud / Drive / OneDrive"
-        case .orphanedAppSupport: return "кэши удалённых приложений"
+        case .orphanedAppSupport: return L10n.t("caches of removed apps", "кэши удалённых приложений")
         case .uvRyeCache: return "uv / rye Python caches"
         case .gitLfsCache: return "LFS + GitHub Desktop"
         case .crashReportsDeep: return "DiagnosticReports старше 14 дней"
@@ -356,27 +253,60 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .parallelsVM, .utmVM, .pyenvRvmAsdf, .proVideoApps,
              .screenTimeKnowledge, .groupContainerCaches, .containerAppCaches,
              .oldLargeDownloads, .whatsappMedia, .orphanedAppSupport, .xcodeOldDeviceSupport:
-            return "Осторожно: проверьте подпункты перед удалением."
+            return L10n.t(
+                "Caution: review sub-items before deleting.",
+                "Осторожно: проверьте подпункты перед удалением."
+            )
         case .trash:
-            return "Файлы из корзины исчезнут безвозвратно."
+            return L10n.t(
+                "Trash items will be permanently removed.",
+                "Файлы из корзины исчезнут безвозвратно."
+            )
         case .browserCaches, .messengerCaches, .spotifyCache, .teamsCache, .chromeProfilesDeep:
-            return "Сессии могут сброситься; кэш скачается снова."
+            return L10n.t(
+                "Sessions may reset; caches will download again.",
+                "Сессии могут сброситься; кэш скачается снова."
+            )
         case .timeMachineSnapshots:
-            return "Локальные снимки TM. Внешний бэкап не трогаем."
+            return L10n.t(
+                "Local TM snapshots only. External backups are untouched.",
+                "Локальные снимки TM. Внешний бэкап не трогаем."
+            )
         case .appleIntelligence, .mediaAnalysis:
-            return "Индексы пересоздадутся; Photos/Siri могут подольше «думать»."
+            return L10n.t(
+                "Indexes will rebuild; Photos/Siri may think longer.",
+                "Индексы пересоздадутся; Photos/Siri могут подольше «думать»."
+            )
         case .iCloudDaemonCache, .mobileAssetCache, .cloudStorageCaches:
-            return "iCloud/система перекачает данные; возможен трафик."
+            return L10n.t(
+                "iCloud/system may re-download data (network use).",
+                "iCloud/система перекачает данные; возможен трафик."
+            )
         case .spotlightIndexer:
-            return "Spotlight переиндексирует диск — поиск может тормозить сутки."
+            return L10n.t(
+                "Spotlight will reindex — search may be slow for a day.",
+                "Spotlight переиндексирует диск — поиск может тормозить сутки."
+            )
         case .documentRevisions:
-            return "Пропадёт история версий «Revert To» в Finder."
+            return L10n.t(
+                "Finder “Revert To” version history will be gone.",
+                "Пропадёт история версий «Revert To» в Finder."
+            )
         case .mailCaches:
-            return "Mail перекачает превью писем."
+            return L10n.t(
+                "Mail will re-download message previews.",
+                "Mail перекачает превью писем."
+            )
         case .crashReportsDeep:
-            return "Удалятся старые .crash / .ips — свежие отчёты останутся."
+            return L10n.t(
+                "Old .crash / .ips reports are removed; recent ones stay.",
+                "Удалятся старые .crash / .ips — свежие отчёты останутся."
+            )
         default:
-            return "Можно снять галочки с отдельных папок внутри категории."
+            return L10n.t(
+                "You can uncheck individual folders inside a category.",
+                "Можно снять галочки с отдельных папок внутри категории."
+            )
         }
     }
 
@@ -493,14 +423,7 @@ enum CleanSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
-        switch self {
-        case .system: return "Система"
-        case .developer: return "Разработка"
-        case .apps: return "Приложения"
-        case .hidden: return "Скрытое"
-        }
-    }
+    var title: String { L10n.section(self) }
 
     var symbol: String {
         switch self {
@@ -515,13 +438,7 @@ enum CleanSection: String, CaseIterable, Identifiable {
 enum RiskLevel: String {
     case safe, caution, danger
 
-    var label: String {
-        switch self {
-        case .safe: return "безопасно"
-        case .caution: return "осторожно"
-        case .danger: return "риск"
-        }
-    }
+    var label: String { L10n.risk(self) }
 }
 
 enum ListFilter: String, CaseIterable, Identifiable {
@@ -529,14 +446,7 @@ enum ListFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
-        switch self {
-        case .withSize: return "С размером"
-        case .selected: return "Выбранные"
-        case .all: return "Все"
-        case .risky: return "Рискованные"
-        }
-    }
+    var title: String { L10n.filter(self) }
 }
 
 enum SortMode: String, CaseIterable, Identifiable {
@@ -544,13 +454,7 @@ enum SortMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
-        switch self {
-        case .size: return "Размер"
-        case .name: return "Имя"
-        case .risk: return "Риск"
-        }
-    }
+    var title: String { L10n.sort(self) }
 
     var symbol: String {
         switch self {
@@ -664,7 +568,7 @@ enum CleanerError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .nothingSelected: return "Нечего чистить — выберите категории или подпапки."
+        case .nothingSelected: return L10n.nothingSelectedError()
         case .partiallyFailed(let msg): return msg
         }
     }

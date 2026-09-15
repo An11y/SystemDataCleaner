@@ -7,7 +7,7 @@ final class CleanerViewModel: ObservableObject {
     @Published var categories: [CategoryScan] = []
     @Published var isScanning = false
     @Published var isCleaning = false
-    @Published var statusText = "Готов к сканированию «Системных данных»."
+    @Published var statusText = L10n.readyStatus
     @Published var lastFreed: Int64?
     @Published var errorMessage: String?
     @Published var showConfirm = false
@@ -160,11 +160,24 @@ final class CleanerViewModel: ObservableObject {
 
     var confirmSummary: String {
         let risky = categories.filter { $0.hasSelection && $0.category.risk != .safe }.count
-        var parts = ["Будет удалено \(selectedCount) пунктов (~ \(formattedSelected))."]
+        var parts = [
+            L10n.tf(
+                "Will delete %d items (~ %@).",
+                "Будет удалено %d пунктов (~ %@).",
+                selectedCount,
+                formattedSelected
+            )
+        ]
         if risky > 0 {
-            parts.append("Среди них \(risky) рискованных категорий.")
+            parts.append(
+                L10n.tf(
+                    "Including %d risky categories.",
+                    "Среди них %d рискованных категорий.",
+                    risky
+                )
+            )
         }
-        parts.append("Отменить будет нельзя.")
+        parts.append(L10n.confirmSubtitle + ".")
         return parts.joined(separator: " ")
     }
 
@@ -315,8 +328,8 @@ final class CleanerViewModel: ObservableObject {
             }
         }
         statusText = hasSelection
-            ? "Умная очистка: \(formattedSelected)"
-            : "Для умной очистки пока мало безопасного мусора"
+            ? L10n.smartSelected(formattedSelected)
+            : L10n.smartEmpty
     }
 
     func selectAllJunk() {
@@ -350,7 +363,7 @@ final class CleanerViewModel: ObservableObject {
         cleanTask = nil
         isScanning = false
         isCleaning = false
-        statusText = categories.isEmpty ? "Скан отменён" : "Операция отменена · найдено \(formattedTotal)"
+        statusText = categories.isEmpty ? L10n.scanCancelled : L10n.cancelledFound(formattedTotal)
     }
 
     func dismissSuccess() {
@@ -380,7 +393,7 @@ final class CleanerViewModel: ObservableObject {
         lastFreed = nil
         showSuccessBanner = false
         scanProgress = 0
-        statusText = "Сканирование…"
+        statusText = L10n.scanningStatus
         refreshPermissions()
 
         let previous = selectionSnapshot()
@@ -395,7 +408,7 @@ final class CleanerViewModel: ObservableObject {
                         let found = self.totalBytes > 0
                             ? " · найдено уже \(self.formattedTotal)"
                             : ""
-                        self.statusText = "Сканирую \(done)/\(total): \(name)\(found)"
+                        self.statusText = L10n.scanningItem(done, total, name, found)
                     }
                 },
                 onPartial: { [weak self] partial in
@@ -420,8 +433,8 @@ final class CleanerViewModel: ObservableObject {
             scanProgress = 1
             freeDiskBytes = await engine.freeDiskBytes()
             statusText = totalBytes > 0
-                ? "Найдено \(formattedTotal) · \(nonEmptyCount) категорий с данными"
-                : "Лишнего почти нет — диск в порядке"
+                ? L10n.foundSummary(formattedTotal, nonEmptyCount)
+                : L10n.diskLooksGood
             scanTask = nil
         }
     }
@@ -440,7 +453,7 @@ final class CleanerViewModel: ObservableObject {
         isCleaning = true
         errorMessage = nil
         showSuccessBanner = false
-        statusText = "Очистка…"
+        statusText = L10n.cleaningStatus
         scanProgress = 0
         let snapshot = categories
         freeDiskBeforeClean = freeDiskBytes
@@ -451,7 +464,7 @@ final class CleanerViewModel: ObservableObject {
                 let freed = try await engine.clean(snapshot) { [weak self] done, total, name in
                     Task { @MainActor in
                         self?.scanProgress = total > 0 ? Double(done) / Double(total) : 0
-                        self?.statusText = "Чищу \(done)/\(total): \(name)"
+                        self?.statusText = L10n.cleaningItem(done, total, name)
                     }
                 }
                 guard !Task.isCancelled else {
@@ -459,13 +472,13 @@ final class CleanerViewModel: ObservableObject {
                     return
                 }
                 lastFreed = freed
-                statusText = "Пересчёт…"
+                statusText = L10n.recalculating
                 let previous = selectionSnapshot()
                 let result = await engine.scanAll(
                     progress: { [weak self] done, total, name in
                         Task { @MainActor in
                             self?.scanProgress = total > 0 ? Double(done) / Double(total) : 0
-                            self?.statusText = "Пересчёт \(done)/\(total): \(name)"
+                            self?.statusText = L10n.recalculatingItem(done, total, name)
                         }
                     },
                     onPartial: { [weak self] partial in
@@ -478,19 +491,19 @@ final class CleanerViewModel: ObservableObject {
                 freeDiskBytes = await engine.freeDiskBytes()
                 isCleaning = false
 
-                var msg = "Освобождено \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))"
+                var msg = L10n.freed(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))
                 if let beforeFree, let after = freeDiskBytes, after > beforeFree {
                     let delta = after - beforeFree
                     let beforeStr = ByteCountFormatter.string(fromByteCount: beforeFree, countStyle: .file)
                     let afterStr = ByteCountFormatter.string(fromByteCount: after, countStyle: .file)
                     msg += " · диск \(beforeStr) → \(afterStr) (+\(ByteCountFormatter.string(fromByteCount: delta, countStyle: .file)))"
                 }
-                statusText = "Готово. \(msg)"
+                statusText = "\(L10n.donePrefix) \(msg)"
                 presentSuccess(msg)
             } catch {
                 isCleaning = false
                 errorMessage = error.localizedDescription
-                statusText = "Очистка прервана"
+                statusText = L10n.cleanInterrupted
             }
             cleanTask = nil
         }
@@ -549,7 +562,10 @@ final class CleanerViewModel: ObservableObject {
         needsFullDiskAccess = false
         hideFdaBanner = true
         freeDiskBytes = 52_429_000_000
-        statusText = "Найдено 18 категорий · ~86 ГБ потенциального мусора"
+        statusText = L10n.tf(
+            "Found 18 categories · ~86 GB potential junk",
+            "Найдено 18 категорий · ~86 ГБ потенциального мусора"
+        )
         listFilter = .withSize
         sortMode = .size
         showSuccessBanner = false
