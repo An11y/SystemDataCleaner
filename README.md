@@ -47,7 +47,7 @@ Nothing is removed until you check it and confirm.
 
 | Feature | What you get |
 |---|---|
-| **90+ categories** | System · Developer · Apps · Hidden |
+| **110+ categories** | System · Developer · Apps · Hidden |
 | **Smart Clean** | Safe + large “caution” items, skips dangerous ones (⌘⇧2) |
 | **Live scan** | Results appear as they’re found · 8 workers · size cache |
 | **Subfolders** | Toggle individual folders/files inside a category |

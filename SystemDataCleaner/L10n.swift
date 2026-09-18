@@ -303,6 +303,21 @@ enum L10n {
         case .installerImages: return t("DMG / PKG in Downloads", "DMG / PKG в Загрузках")
         case .mailDownloads: return t("Mail attachments", "Вложения Mail")
         case .projectArtifacts: return t("Artifacts in ~/Projects", "Артефакты в ~/Projects")
+        case .homeDotCache: return t("Home ~/.cache", "Домашний ~/.cache")
+        case .xcodePreviews: return t("Xcode Previews cache", "Кэш Xcode Previews")
+        case .coreSimulatorLogs: return t("Simulator logs", "Логи симуляторов")
+        case .androidSDKCaches: return t("Android SDK / AVD caches", "Кэши Android SDK / AVD")
+        case .ccacheSccache: return t("ccache / sccache", "ccache / sccache")
+        case .rubyGemsCache: return t("RubyGems / CocoaPods repos", "RubyGems / CocoaPods repos")
+        case .jupyterCache: return t("Jupyter / notebook caches", "Jupyter / кэши ноутбуков")
+        case .systemUpdateLeftovers: return t("Software Update leftovers", "Остатки обновлений macOS")
+        case .instrumentsTraces: return t("Instruments traces", "Трассы Instruments")
+        case .metalShaderCaches: return t("Metal / GPU shader caches", "Metal / GPU shader-кэши")
+        case .loomMiroCaches: return t("Loom / Miro caches", "Кэши Loom / Miro")
+        case .telegramMediaDeep: return t("Telegram media cache", "Медиа-кэш Telegram")
+        case .dockerDesktopData: return t("Docker Desktop data", "Данные Docker Desktop")
+        case .xcodeDocCaches: return t("Xcode docs / downloads", "Доки / загрузки Xcode")
+        case .voltaAsdfNode: return t("Volta / asdf / n Node versions", "Volta / asdf / n версии Node")
         }
     }
 }

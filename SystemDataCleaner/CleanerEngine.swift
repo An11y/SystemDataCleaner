@@ -12,11 +12,20 @@ actor CleanerEngine {
 
     private let projectArtifactNames: Set<String> = [
         "node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo", ".parcel-cache",
-        ".vite", ".webpack", ".angular", ".expo", ".expo-shared",
+        ".vite", ".webpack", ".angular", ".expo", ".expo-shared", ".output",
         "dist", "build", "out", "target", ".gradle", "Pods", ".dart_tool",
         "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
         ".cache", "DerivedData", ".vercel", ".netlify", "coverage", ".nyc_output",
-        "storybook-static", ".serverless", "vendor", "vendor/bundle", ".bundle", ".build"
+        "storybook-static", ".serverless", "vendor", "vendor/bundle", ".bundle", ".build",
+        ".yarn", ".pnpm-store", "bower_components", ".terraform", ".pulumi",
+        "Carthage", "Checkouts", ".swiftpm", "bazel-bin", "bazel-out", "bazel-testlogs",
+        ".cxx", "cmake-build-debug", "cmake-build-release",
+        "Pods", "Carthage/Build", ".pub-cache", ".dart_tool", "ios/Pods",
+        "android/.gradle", "android/app/build", "android/build", "ios/build",
+        ".deno", ".esbuild", ".rollup.cache", ".sass-cache", ".eslintcache",
+        ".stylelintcache", "tmp", "temp", ".tmp", ".temp", "logs", ".logs",
+        "htmlcov", ".hypothesis", ".nox", ".pdm-build", ".tox",
+        "node_modules/.cache", ".vite/deps", ".webpack/cache"
     ]
 
     init() {
@@ -242,7 +251,9 @@ actor CleanerEngine {
 
         let expandChildren: Set<CleanCategoryID> = [
             .userCaches, .userLogs, .iosDeviceSupport, .iosBackups,
-            .jetbrainsCaches, .aiDevTools, .browserCaches, .messengerCaches
+            .jetbrainsCaches, .aiDevTools, .browserCaches, .messengerCaches,
+            .homeDotCache, .androidSDKCaches, .mlModels, .vscodeCaches,
+            .electronApps, .dockerDesktopData
         ]
 
         for url in targets {
@@ -326,15 +337,27 @@ actor CleanerEngine {
         case .userLogs:
             return existing([
                 "Library/Logs",
-                "Library/Logs/DiagnosticReports"
+                "Library/Logs/DiagnosticReports",
+                "Library/Logs/CoreSimulator",
+                "Library/Logs/CreativeCloud",
+                "Library/Logs/Google",
+                "Library/Logs/Adobe",
+                "Library/Logs/Homebrew",
+                "Library/Logs/DiagnosticReports/Retired"
             ])
         case .temporary:
             var urls = uniqueURLs([
                 URL(fileURLWithPath: NSTemporaryDirectory()),
-                home.appendingPathComponent("Library/Caches/TemporaryItems")
+                home.appendingPathComponent("Library/Caches/TemporaryItems"),
+                home.appendingPathComponent("Library/Caches/com.apple.bird.token"),
+                URL(fileURLWithPath: "/private/tmp")
             ].filter { fm.fileExists(atPath: $0.path) })
             if let darwinTmp = shellZsh("getconf DARWIN_USER_TEMP_DIR 2>/dev/null"), !darwinTmp.isEmpty {
-                let u = URL(fileURLWithPath: darwinTmp)
+                let u = URL(fileURLWithPath: darwinTmp.trimmingCharacters(in: .whitespacesAndNewlines))
+                if fm.fileExists(atPath: u.path) { urls.append(u) }
+            }
+            if let darwinCache = shellZsh("getconf DARWIN_USER_CACHE_DIR 2>/dev/null"), !darwinCache.isEmpty {
+                let u = URL(fileURLWithPath: darwinCache.trimmingCharacters(in: .whitespacesAndNewlines))
                 if fm.fileExists(atPath: u.path) { urls.append(u) }
             }
             return uniqueURLs(urls)
@@ -422,12 +445,23 @@ actor CleanerEngine {
         case .npm:
             return existingAbs([
                 home.appendingPathComponent(".npm"),
+                home.appendingPathComponent(".npm/_cacache"),
+                home.appendingPathComponent(".npm/_logs"),
+                home.appendingPathComponent(".npm/_npx"),
                 home.appendingPathComponent("Library/Caches/Yarn"),
                 home.appendingPathComponent("Library/Caches/pnpm"),
                 home.appendingPathComponent(".cache/yarn"),
+                home.appendingPathComponent(".cache/pnpm"),
+                home.appendingPathComponent(".cache/node-gyp"),
+                home.appendingPathComponent("Library/Caches/node-gyp"),
                 home.appendingPathComponent(".local/share/pnpm/store"),
                 home.appendingPathComponent("Library/pnpm"),
-                home.appendingPathComponent(".pnpm-store")
+                home.appendingPathComponent(".pnpm-store"),
+                home.appendingPathComponent(".yarn/berry/cache"),
+                home.appendingPathComponent(".yarn/cache"),
+                home.appendingPathComponent(".turbo"),
+                home.appendingPathComponent(".cache/typescript"),
+                home.appendingPathComponent("Library/Caches/typescript")
             ])
         case .bun:
             return existingAbs([home.appendingPathComponent(".bun/install/cache")])
@@ -456,7 +490,11 @@ actor CleanerEngine {
         case .pip:
             return existingAbs([
                 home.appendingPathComponent(".cache/pip"),
-                home.appendingPathComponent("Library/Caches/pip")
+                home.appendingPathComponent("Library/Caches/pip"),
+                home.appendingPathComponent(".cache/uv"),
+                home.appendingPathComponent(".cache/pipx"),
+                home.appendingPathComponent(".local/pipx/.cache"),
+                home.appendingPathComponent(".cache/pre-commit")
             ])
         case .poetry:
             return existingAbs([
@@ -563,17 +601,35 @@ actor CleanerEngine {
                 home.appendingPathComponent("Library/Caches/com.github.CopilotForXcode"),
                 home.appendingPathComponent(".cache/claude"),
                 home.appendingPathComponent(".continue"),
-                home.appendingPathComponent(".aider")
+                home.appendingPathComponent(".aider"),
+                home.appendingPathComponent(".gemini"),
+                home.appendingPathComponent(".cache/gemini"),
+                home.appendingPathComponent(".cache/chatgpt"),
+                home.appendingPathComponent("Library/Application Support/ChatGPT/Cache"),
+                home.appendingPathComponent("Library/Application Support/ChatGPT/Code Cache"),
+                home.appendingPathComponent("Library/Application Support/ChatGPT/GPUCache"),
+                home.appendingPathComponent("Library/Application Support/com.openai.chat/Cache"),
+                home.appendingPathComponent(".cache/gh-copilot"),
+                home.appendingPathComponent("Library/Caches/dev.warp.Warp-Stable"),
+                home.appendingPathComponent(".cache/lm-studio"),
+                home.appendingPathComponent(".cache/ollama")
             ])
         case .mlModels:
             return existingAbs([
                 home.appendingPathComponent(".ollama/models"),
                 home.appendingPathComponent(".cache/huggingface"),
+                home.appendingPathComponent(".cache/huggingface/hub"),
                 home.appendingPathComponent(".cache/torch"),
                 home.appendingPathComponent(".cache/whisper"),
                 home.appendingPathComponent(".cache/mlx"),
+                home.appendingPathComponent(".cache/diffusers"),
+                home.appendingPathComponent(".cache/comfyui"),
+                home.appendingPathComponent(".cache/transformers"),
                 home.appendingPathComponent("Library/Application Support/com.apple.dt.Xcode/Downloads"),
-                home.appendingPathComponent("Library/Application Support/DiffusionBee")
+                home.appendingPathComponent("Library/Application Support/DiffusionBee"),
+                home.appendingPathComponent("Library/Application Support/StabilityMatrix"),
+                home.appendingPathComponent(".lmstudio/models"),
+                home.appendingPathComponent("Library/Application Support/LM Studio")
             ])
         case .browserCaches:
             var urls = existing([
@@ -594,6 +650,10 @@ actor CleanerEngine {
                 "Library/Caches/com.apple.Safari.SafeBrowsing",
                 "Library/Caches/orion",
                 "Library/Caches/com.kagi.orion",
+                "Library/Caches/company.thebrowser.dia",
+                "Library/Caches/app.zen-browser.zen",
+                "Library/Caches/org.mozilla.firefox",
+                "Library/Caches/com.apple.SafariTechnologyPreview",
                 "Library/Application Support/Google/Chrome/Default/Service Worker",
                 "Library/Application Support/Google/Chrome/Default/Code Cache",
                 "Library/Application Support/Google/Chrome/Default/GPUCache",
@@ -804,6 +864,134 @@ actor CleanerEngine {
                 home.appendingPathComponent(".fnm/node-versions"),
                 home.appendingPathComponent(".local/share/fnm/node-versions")
             ])
+
+        case .homeDotCache:
+            return existingAbs([home.appendingPathComponent(".cache")])
+        case .xcodePreviews:
+            return existing([
+                "Library/Developer/Xcode/UserData/Previews",
+                "Library/Developer/Xcode/UserData/IB Support",
+                "Library/Caches/com.apple.dt.Xcode.Previews"
+            ])
+        case .coreSimulatorLogs:
+            var urls = existing(["Library/Logs/CoreSimulator"])
+            let devices = home.appendingPathComponent("Library/Developer/CoreSimulator/Devices")
+            if let kids = try? fm.contentsOfDirectory(atPath: devices.path) {
+                for id in kids.prefix(100) {
+                    let log = devices.appendingPathComponent(id).appendingPathComponent("data/Library/Logs")
+                    if fm.fileExists(atPath: log.path) { urls.append(log) }
+                }
+            }
+            return uniqueURLs(urls)
+        case .androidSDKCaches:
+            var urls = existingAbs([
+                home.appendingPathComponent("Library/Android/sdk/.temp"),
+                home.appendingPathComponent("Library/Android/sdk/system-images"),
+                home.appendingPathComponent(".android/cache"),
+                home.appendingPathComponent(".android/avd"),
+                home.appendingPathComponent(".gradle/caches"),
+                home.appendingPathComponent(".gradle/wrapper/dists")
+            ])
+            let google = home.appendingPathComponent("Library/Caches/Google")
+            if let kids = try? fm.contentsOfDirectory(atPath: google.path) {
+                for name in kids where name.hasPrefix("AndroidStudio") || name.contains("Android") {
+                    urls.append(google.appendingPathComponent(name))
+                }
+            }
+            return uniqueURLs(urls)
+        case .ccacheSccache:
+            return existingAbs([
+                home.appendingPathComponent(".ccache"),
+                home.appendingPathComponent(".cache/ccache"),
+                home.appendingPathComponent(".cache/sccache"),
+                home.appendingPathComponent("Library/Caches/Mozilla.sccache")
+            ])
+        case .rubyGemsCache:
+            return existingAbs([
+                home.appendingPathComponent(".gem/cache"),
+                home.appendingPathComponent(".gem/ruby"),
+                home.appendingPathComponent("Library/Caches/CocoaPods"),
+                home.appendingPathComponent(".cocoapods/repos"),
+                home.appendingPathComponent("Library/Caches/org.carthage.CarthageKit")
+            ])
+        case .jupyterCache:
+            return existingAbs([
+                home.appendingPathComponent(".jupyter"),
+                home.appendingPathComponent("Library/Jupyter"),
+                home.appendingPathComponent(".ipynb_checkpoints"),
+                home.appendingPathComponent(".cache/jupyter"),
+                home.appendingPathComponent("Library/Caches/s.jupyternotebook")
+            ])
+        case .systemUpdateLeftovers:
+            return existing([
+                "Library/Updates",
+                "Library/Caches/com.apple.SoftwareUpdate",
+                "Library/Caches/com.apple.MobileSoftwareUpdate",
+                "Library/Caches/com.apple.MobileAsset",
+                "Library/iTunes/iPhone Software Updates",
+                "Library/Application Support/com.apple.MobileSoftwareUpdate"
+            ])
+        case .instrumentsTraces:
+            return existing([
+                "Library/Developer/Xcode/Instruments",
+                "Library/Application Support/Instruments",
+                "Library/Caches/com.apple.dt.Instruments"
+            ])
+        case .metalShaderCaches:
+            return existing([
+                "Library/Caches/com.apple.metal",
+                "Library/Caches/com.apple.Metal",
+                "Library/Caches/org.sparkle-project.SparkleUpdaterShaderCache"
+            ])
+        case .loomMiroCaches:
+            return existing([
+                "Library/Application Support/Loom/Cache",
+                "Library/Application Support/Loom/Code Cache",
+                "Library/Application Support/Loom/GPUCache",
+                "Library/Caches/com.loom.desktop",
+                "Library/Application Support/Miro/Cache",
+                "Library/Application Support/Miro/Code Cache",
+                "Library/Application Support/Miro/GPUCache",
+                "Library/Caches/com.electron.realtimeboard",
+                "Library/Application Support/Notion Calendar/Cache",
+                "Library/Application Support/Notion Calendar/Code Cache"
+            ])
+        case .telegramMediaDeep:
+            return existing([
+                "Library/Group Containers/6N38VWS5BX.ru.keepcoder.Telegram",
+                "Library/Caches/ru.keepcoder.Telegram",
+                "Library/Application Support/Telegram Desktop/tdata/user_data",
+                "Library/Application Support/Telegram Desktop/tdata/user_data/cache",
+                "Library/Application Support/Telegram Desktop/tdata/user_data/media_cache"
+            ])
+        case .dockerDesktopData:
+            return existing([
+                "Library/Containers/com.docker.docker/Data",
+                "Library/Group Containers/group.com.docker",
+                "Library/Caches/com.docker.docker",
+                "Library/Logs/Docker Desktop",
+                ".docker/buildx",
+                ".docker/scan"
+            ])
+        case .xcodeDocCaches:
+            return existing([
+                "Library/Developer/Shared/Documentation/DocSets",
+                "Library/Developer/DocumentationCache",
+                "Library/Developer/Xcode/DocumentationCache",
+                "Library/Caches/com.apple.dt.Xcode.Downloadable"
+            ])
+        case .voltaAsdfNode:
+            return existingAbs([
+                home.appendingPathComponent(".volta/tools/image"),
+                home.appendingPathComponent(".volta/tmp"),
+                home.appendingPathComponent(".asdf/installs/nodejs"),
+                home.appendingPathComponent(".asdf/downloads"),
+                home.appendingPathComponent(".n/versions"),
+                home.appendingPathComponent(".local/share/mise/installs/node"),
+                home.appendingPathComponent(".local/share/mise/downloads"),
+                home.appendingPathComponent(".nvm/.cache")
+            ])
+
         case .mailDownloads:
             return existing([
                 "Library/Containers/com.apple.mail/Data/Library/Mail Downloads",
@@ -1127,7 +1315,8 @@ actor CleanerEngine {
 
     private func scanProjectArtifacts(_ id: CleanCategoryID) -> CategoryScan {
         let roots = ["Projects", "Developer", "repos", "dev", "code", "Code", "workspace", "Work",
-                     "src", "Sites", "github", "gitlab"]
+                     "src", "Sites", "github", "gitlab", "GitHub", "work", "lab", "sandbox",
+                     "Desktop", "Documents"]
             .map { home.appendingPathComponent($0) }
             .filter { fm.fileExists(atPath: $0.path) }
 
@@ -1157,15 +1346,15 @@ actor CleanerEngine {
                 if rel.split(separator: "/").count > 6 { continue }
 
                 let size = directorySize(at: url)
-                if size > 8_000_000 {
+                if size > 2_500_000 {
                     total += size
                     hits.append(CleanItem(path: url.path, byteCount: size, isSelected: false))
                     depthSkip.append(url.path)
                     enumerator.skipDescendants()
                 }
-                if hits.count >= 200 { break }
+                if hits.count >= 450 { break }
             }
-            if hits.count >= 200 { break }
+            if hits.count >= 450 { break }
         }
 
         hits.sort { $0.byteCount > $1.byteCount }
@@ -1176,7 +1365,10 @@ actor CleanerEngine {
             items: hits,
             isSelected: false,
             exists: total > 0,
-            detailNote: "Отметь нужные node_modules / .next / target…"
+            detailNote: L10n.t(
+                "Check node_modules / .next / target / build…",
+                "Отметь нужные node_modules / .next / target…"
+            )
         )
     }
 
@@ -1364,7 +1556,7 @@ actor CleanerEngine {
             if installerExts.contains(file.pathExtension.lowercased()) { continue }
             let size = Int64(values?.fileSize ?? 0)
             let age = values?.contentModificationDate.map { Date().timeIntervalSince($0) } ?? 0
-            if size >= 50_000_000 || (size > 5_000_000 && age > 14 * 24 * 3600) {
+            if size >= 20_000_000 || (size > 2_000_000 && age > 7 * 24 * 3600) {
                 total += size
                 hits.append(CleanItem(path: file.path, byteCount: size, isSelected: false))
             }
@@ -1373,7 +1565,7 @@ actor CleanerEngine {
         return CategoryScan(
             category: id, byteCount: total, paths: [downloads.path],
             items: hits, isSelected: false, exists: total > 0,
-            detailNote: "Крупные или старые файлы в Загрузках — галочки по файлам"
+            detailNote: L10n.t("Large/old Downloads — pick files", "Крупные или старые файлы в Загрузках — галочки по файлам")
         )
     }
 
@@ -1485,7 +1677,7 @@ actor CleanerEngine {
                 if installed.contains(where: { lower.contains($0) }) { continue }
                 let url = caches.appendingPathComponent(name)
                 let size = directorySize(at: url)
-                guard size > 40_000_000 else { continue }
+                guard size > 12_000_000 else { continue }
                 total += size
                 hits.append(CleanItem(path: url.path, byteCount: size, isSelected: false))
                 if hits.count >= 80 { break }
@@ -1510,7 +1702,7 @@ actor CleanerEngine {
 
         var hits: [CleanItem] = []
         var total: Int64 = 0
-        let cutoff = Date().addingTimeInterval(-14 * 24 * 3600)
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
         let exts: Set<String> = ["crash", "ips", "spin", "diag", "shutdownStall"]
 
         for root in roots {
@@ -1542,7 +1734,7 @@ actor CleanerEngine {
             items: hits,
             isSelected: id.selectedByDefault && total > 0,
             exists: total > 0,
-            detailNote: hits.isEmpty ? nil : "Отчёты старше 14 дней — \(hits.count) файлов"
+            detailNote: hits.isEmpty ? nil : L10n.tf("Reports older than 7 days — %d files", "Отчёты старше 7 дней — %d файлов", hits.count)
         )
     }
 

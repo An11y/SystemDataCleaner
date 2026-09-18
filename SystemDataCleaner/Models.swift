@@ -40,6 +40,12 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
     case cloudStorageCaches, orphanedAppSupport, uvRyeCache, gitLfsCache
     case crashReportsDeep, xcodeOldDeviceSupport
 
+    // Ещё больше мусора
+    case homeDotCache, xcodePreviews, coreSimulatorLogs, androidSDKCaches
+    case ccacheSccache, rubyGemsCache, jupyterCache, systemUpdateLeftovers
+    case instrumentsTraces, metalShaderCaches, loomMiroCaches, telegramMediaDeep
+    case dockerDesktopData, xcodeDocCaches, voltaAsdfNode
+
     // Файлы
     case installerImages, mailDownloads, projectArtifacts
 
@@ -144,7 +150,22 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .orphanedAppSupport: return L10n.t("caches of removed apps", "кэши удалённых приложений")
         case .uvRyeCache: return "uv / rye Python caches"
         case .gitLfsCache: return "LFS + GitHub Desktop"
-        case .crashReportsDeep: return "DiagnosticReports старше 14 дней"
+        case .crashReportsDeep: return L10n.t("DiagnosticReports older than 7 days", "DiagnosticReports старше 7 дней")
+        case .homeDotCache: return "~/.cache"
+        case .xcodePreviews: return "Previews / IB Support"
+        case .coreSimulatorLogs: return "CoreSimulator Logs"
+        case .androidSDKCaches: return "Android SDK / .android"
+        case .ccacheSccache: return "ccache / sccache"
+        case .rubyGemsCache: return "gem cache / CocoaPods repos"
+        case .jupyterCache: return "Jupyter / ipynb"
+        case .systemUpdateLeftovers: return "Software Update leftovers"
+        case .instrumentsTraces: return "Instruments traces"
+        case .metalShaderCaches: return "Metal / GPU shader caches"
+        case .loomMiroCaches: return "Loom / Miro / Notion extras"
+        case .telegramMediaDeep: return "Telegram media cache"
+        case .dockerDesktopData: return "Docker Desktop data"
+        case .xcodeDocCaches: return "Xcode DocSets / Downloads"
+        case .voltaAsdfNode: return "volta / asdf / n versions"
         case .xcodeOldDeviceSupport: return "DeviceSupport без активного Xcode"
         case .installerImages: return "Downloads *.dmg *.pkg"
         case .mailDownloads: return "Mail Downloads"
@@ -239,7 +260,23 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .uvRyeCache: return "leaf.arrow.triangle.circlepath"
         case .gitLfsCache: return "arrow.triangle.branch"
         case .crashReportsDeep: return "exclamationmark.triangle"
+        case .homeDotCache: return "internaldrive"
+        case .xcodePreviews: return "eye.circle"
+        case .coreSimulatorLogs: return "doc.text"
+        case .androidSDKCaches: return "candybarphone"
+
         case .xcodeOldDeviceSupport: return "iphone.slash"
+        case .ccacheSccache: return "bolt.horizontal.circle"
+        case .rubyGemsCache: return "diamond"
+        case .jupyterCache: return "function"
+        case .systemUpdateLeftovers: return "arrow.down.app"
+        case .instrumentsTraces: return "waveform.path.ecg"
+        case .metalShaderCaches: return "cube"
+        case .loomMiroCaches: return "video.badge.waveform"
+        case .telegramMediaDeep: return "paperclip.circle"
+        case .dockerDesktopData: return "shippingbox.fill"
+        case .xcodeDocCaches: return "books.vertical"
+        case .voltaAsdfNode: return "square.stack.3d.up"
         case .installerImages: return "opticaldiscdrive"
         case .mailDownloads: return "envelope"
         case .projectArtifacts: return "folder.badge.gearshape"
@@ -252,7 +289,9 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .projectArtifacts, .iosSoftwareUpdates, .iMessageAttachments, .nvmCache,
              .parallelsVM, .utmVM, .pyenvRvmAsdf, .proVideoApps,
              .screenTimeKnowledge, .groupContainerCaches, .containerAppCaches,
-             .oldLargeDownloads, .whatsappMedia, .orphanedAppSupport, .xcodeOldDeviceSupport:
+             .oldLargeDownloads, .whatsappMedia, .orphanedAppSupport, .xcodeOldDeviceSupport,
+             .dockerDesktopData, .androidSDKCaches, .voltaAsdfNode, .telegramMediaDeep,
+             .xcodeDocCaches, .systemUpdateLeftovers:
             return L10n.t(
                 "Caution: review sub-items before deleting.",
                 "Осторожно: проверьте подпункты перед удалением."
@@ -321,7 +360,9 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .screenTimeKnowledge, .groupContainerCaches, .containerAppCaches,
              .spotlightIndexer, .iCloudDaemonCache, .mobileAssetCache,
              .oldLargeDownloads, .chromeProfilesDeep, .officeCaches, .whatsappMedia,
-             .cloudStorageCaches, .orphanedAppSupport, .xcodeOldDeviceSupport:
+             .cloudStorageCaches, .orphanedAppSupport, .xcodeOldDeviceSupport,
+             .dockerDesktopData, .voltaAsdfNode, .telegramMediaDeep, .systemUpdateLeftovers,
+             .xcodeDocCaches, .androidSDKCaches:
             return false
         default:
             return true
@@ -371,7 +412,7 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .mediaAnalysis, .appleIntelligence, .iosSoftwareUpdates, .webkitCache, .iconServices,
              .coreSuggestions, .iCloudDaemonCache, .spotlightIndexer, .mapsCache,
              .screenTimeKnowledge, .mailCaches, .booksCache, .mobileAssetCache, .speechVoicePacks,
-             .appleMediaApps, .timeMachineSnapshots:
+             .appleMediaApps, .timeMachineSnapshots, .systemUpdateLeftovers, .metalShaderCaches:
             return .system
         case .xcodeDerivedData, .xcodeArchives, .iosDeviceSupport, .simulatorCaches,
              .unavailableSimulators, .swiftPMCache, .xcodeCaches, .carthage, .iosBackups,
@@ -379,14 +420,18 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .poetry, .conda, .goCache, .cargo, .flutter, .composer, .nuget, .docker,
              .playwright, .cypress, .puppeteer, .jetbrainsCaches, .vscodeCaches, .androidStudio,
              .aiDevTools, .mlModels, .bazelCache, .sbtCache, .nvmCache, .javaJVM, .pyenvRvmAsdf,
-             .gcloudKubeColima, .projectArtifacts, .uvRyeCache, .gitLfsCache, .xcodeOldDeviceSupport:
+             .gcloudKubeColima, .projectArtifacts, .uvRyeCache, .gitLfsCache, .xcodeOldDeviceSupport,
+             .homeDotCache, .xcodePreviews, .coreSimulatorLogs, .androidSDKCaches,
+             .ccacheSccache, .rubyGemsCache, .jupyterCache, .instrumentsTraces,
+             .xcodeDocCaches, .voltaAsdfNode, .dockerDesktopData:
             return .developer
         case .browserCaches, .messengerCaches, .spotifyCache, .adobeCache, .zoomCache,
              .steamCache, .unityCache, .unrealCache, .blenderCache, .figmaCache, .teamsCache,
              .notionCache, .dropboxCache, .iMessageAttachments, .electronApps, .parallelsVM,
              .proVideoApps, .launcherCaches, .obsidianNotes, .onePasswordLogs, .utmVM,
              .installerImages, .mailDownloads, .oldLargeDownloads, .chromeProfilesDeep,
-             .officeCaches, .whatsappMedia, .cloudStorageCaches:
+             .officeCaches, .whatsappMedia, .cloudStorageCaches,
+             .loomMiroCaches, .telegramMediaDeep:
             return .apps
         case .groupContainerCaches, .documentRevisions, .containerAppCaches,
              .orphanedAppSupport, .crashReportsDeep:
