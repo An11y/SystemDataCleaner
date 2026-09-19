@@ -1,0 +1,11 @@
+---
+description: Never attribute commits to Cursor Agent
+alwaysApply: true
+---
+
+# No Cursor Agent in git history
+
+- NEVER add `Co-authored-by: Cursor`, `Co-authored-by: cursoragent`, or any Cursor/Agent trailer to commits.
+- NEVER use author/committer name or email containing Cursor, cursoragent, or @cursor.com.
+- When committing, strip any such trailers if the environment injects them — prefer `git commit-tree` rewrite over leaving them.
+- Do not amend/push commits that would reintroduce Cursor as a co-author or contributor on GitHub.

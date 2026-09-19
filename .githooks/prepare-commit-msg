@@ -1,0 +1,19 @@
+#!/bin/sh
+# Удаляет Co-authored-by от Cursor, если хук/IDE вставил его в сообщение.
+MSG_FILE="$1"
+[ -f "$MSG_FILE" ] || exit 0
+# portable sed (macOS)
+tmp=$(mktemp)
+grep -v -E '^Co-authored-by:.*(Cursor|cursoragent|@cursor\.com)' "$MSG_FILE" > "$tmp" || true
+# Убрать лишние пустые строки в конце
+# shellcheck disable=SC2016
+awk 'NF{p=1} p' "$tmp" | awk '
+  { lines[NR]=$0 }
+  END {
+    end=NR
+    while (end>0 && lines[end]=="") end--
+    for (i=1;i<=end;i++) print lines[i]
+  }
+' > "$MSG_FILE"
+rm -f "$tmp"
+exit 0
