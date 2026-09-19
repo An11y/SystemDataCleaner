@@ -2,45 +2,45 @@ import AppKit
 import SwiftUI
 
 enum AppTheme {
-    // Адаптивные цвета — следуют системной светлой/тёмной теме
+    // Адаптивные цвета — системная светлая/тёмная тема, teal utility (не purple)
     static let bg = Color(nsColor: .dynamic(
-        light: NSColor(calibratedRed: 0.96, green: 0.97, blue: 0.98, alpha: 1),
-        dark: NSColor(calibratedRed: 0.07, green: 0.09, blue: 0.11, alpha: 1)
+        light: NSColor(calibratedRed: 0.955, green: 0.965, blue: 0.975, alpha: 1),
+        dark: NSColor(calibratedRed: 0.065, green: 0.08, blue: 0.10, alpha: 1)
     ))
 
     static let surface = Color(nsColor: .dynamic(
         light: NSColor(calibratedRed: 1.0, green: 1.0, blue: 1.0, alpha: 1),
-        dark: NSColor(calibratedRed: 0.11, green: 0.13, blue: 0.16, alpha: 1)
+        dark: NSColor(calibratedRed: 0.105, green: 0.125, blue: 0.155, alpha: 1)
     ))
 
     static let surfaceRaised = Color(nsColor: .dynamic(
-        light: NSColor(calibratedRed: 0.93, green: 0.94, blue: 0.96, alpha: 1),
-        dark: NSColor(calibratedRed: 0.14, green: 0.17, blue: 0.21, alpha: 1)
+        light: NSColor(calibratedRed: 0.925, green: 0.938, blue: 0.955, alpha: 1),
+        dark: NSColor(calibratedRed: 0.135, green: 0.16, blue: 0.195, alpha: 1)
     ))
 
     static let surfaceHover = Color(nsColor: .dynamic(
-        light: NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.94, alpha: 1),
-        dark: NSColor(calibratedRed: 0.16, green: 0.19, blue: 0.24, alpha: 1)
+        light: NSColor(calibratedRed: 0.90, green: 0.918, blue: 0.94, alpha: 1),
+        dark: NSColor(calibratedRed: 0.155, green: 0.185, blue: 0.23, alpha: 1)
     ))
 
     static let border = Color(nsColor: .dynamic(
-        light: NSColor(calibratedWhite: 0, alpha: 0.10),
-        dark: NSColor(calibratedWhite: 1, alpha: 0.08)
+        light: NSColor(calibratedWhite: 0, alpha: 0.09),
+        dark: NSColor(calibratedWhite: 1, alpha: 0.09)
     ))
 
     static let borderStrong = Color(nsColor: .dynamic(
-        light: NSColor(calibratedWhite: 0, alpha: 0.16),
-        dark: NSColor(calibratedWhite: 1, alpha: 0.14)
+        light: NSColor(calibratedWhite: 0, alpha: 0.15),
+        dark: NSColor(calibratedWhite: 1, alpha: 0.15)
     ))
 
     static let accent = Color(nsColor: .dynamic(
-        light: NSColor(calibratedRed: 0.05, green: 0.62, blue: 0.52, alpha: 1),
-        dark: NSColor(calibratedRed: 0.20, green: 0.80, blue: 0.66, alpha: 1)
+        light: NSColor(calibratedRed: 0.02, green: 0.58, blue: 0.50, alpha: 1),
+        dark: NSColor(calibratedRed: 0.22, green: 0.82, blue: 0.68, alpha: 1)
     ))
 
     static let accentSoft = Color(nsColor: .dynamic(
-        light: NSColor(calibratedRed: 0.05, green: 0.62, blue: 0.52, alpha: 0.12),
-        dark: NSColor(calibratedRed: 0.20, green: 0.80, blue: 0.66, alpha: 0.14)
+        light: NSColor(calibratedRed: 0.02, green: 0.58, blue: 0.50, alpha: 0.11),
+        dark: NSColor(calibratedRed: 0.22, green: 0.82, blue: 0.68, alpha: 0.16)
     ))
 
     static let warn = Color(nsColor: .dynamic(
@@ -54,27 +54,25 @@ enum AppTheme {
     ))
 
     static let text = Color(nsColor: .dynamic(
-        light: NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.15, alpha: 1),
-        dark: NSColor(calibratedWhite: 1, alpha: 0.95)
+        light: NSColor(calibratedRed: 0.09, green: 0.11, blue: 0.14, alpha: 1),
+        dark: NSColor(calibratedWhite: 1, alpha: 0.94)
     ))
 
     static let textSecondary = Color(nsColor: .dynamic(
-        light: NSColor(calibratedWhite: 0, alpha: 0.52),
-        dark: NSColor(calibratedWhite: 1, alpha: 0.58)
+        light: NSColor(calibratedWhite: 0, alpha: 0.50),
+        dark: NSColor(calibratedWhite: 1, alpha: 0.56)
     ))
 
     static let textTertiary = Color(nsColor: .dynamic(
-        light: NSColor(calibratedWhite: 0, alpha: 0.36),
-        dark: NSColor(calibratedWhite: 1, alpha: 0.38)
+        light: NSColor(calibratedWhite: 0, alpha: 0.34),
+        dark: NSColor(calibratedWhite: 1, alpha: 0.36)
     ))
 
-    /// Текст на акцентной кнопке (удалить / primary CTA).
     static let onAccent = Color(nsColor: .dynamic(
         light: NSColor.white,
-        dark: NSColor(calibratedRed: 0.07, green: 0.09, blue: 0.11, alpha: 1)
+        dark: NSColor(calibratedRed: 0.05, green: 0.08, blue: 0.10, alpha: 1)
     ))
 
-    // 8pt grid — удобные отступы по всему UI
     static let spaceXXS: CGFloat = 4
     static let spaceXS: CGFloat = 8
     static let spaceSM: CGFloat = 12
@@ -84,13 +82,9 @@ enum AppTheme {
     static let radiusSM: CGFloat = 8
     static let radiusMD: CGFloat = 12
     static let radiusLG: CGFloat = 16
-    /// Горизонтальные поля окна
-    static let pageInset: CGFloat = 20
-    /// Вертикальный ритм между блоками
+    static let pageInset: CGFloat = 22
     static let blockGap: CGFloat = 14
-    /// Внутренний padding карточек
     static let cardPadding: CGFloat = 14
-    /// Минимальная высота кликабельных контролов
     static let controlHeight: CGFloat = 34
 
     static func title(_ size: CGFloat) -> Font {
@@ -105,12 +99,28 @@ enum AppTheme {
         .system(size: size, weight: .semibold, design: .monospaced)
     }
 
-    /// Фон окна для NSWindow — тоже динамический.
     static var nsWindowBackground: NSColor {
         .dynamic(
-            light: NSColor(calibratedRed: 0.96, green: 0.97, blue: 0.98, alpha: 1),
-            dark: NSColor(calibratedRed: 0.07, green: 0.09, blue: 0.11, alpha: 1)
+            light: NSColor(calibratedRed: 0.955, green: 0.965, blue: 0.975, alpha: 1),
+            dark: NSColor(calibratedRed: 0.065, green: 0.08, blue: 0.10, alpha: 1)
         )
+    }
+
+    static func cardBackground(hovered: Bool = false, selected: Bool = false) -> some View {
+        RoundedRectangle(cornerRadius: radiusMD, style: .continuous)
+            .fill(hovered ? surfaceHover : surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: radiusMD, style: .continuous)
+                    .strokeBorder(
+                        selected ? accent.opacity(0.40) : border,
+                        lineWidth: selected ? 1.5 : 1
+                    )
+            )
+            .shadow(
+                color: Color.black.opacity(hovered ? 0.06 : 0.03),
+                radius: hovered ? 8 : 3,
+                y: hovered ? 3 : 1
+            )
     }
 }
 
@@ -134,7 +144,8 @@ struct SoftButtonStyle: ButtonStyle {
                             .strokeBorder(AppTheme.border, lineWidth: 1)
                     )
             )
-            .opacity(configuration.isPressed ? 0.92 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -146,7 +157,14 @@ struct PrimaryButtonStyle: ButtonStyle {
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
                     .fill(enabled ? AppTheme.accent : AppTheme.surfaceRaised)
+                    .shadow(
+                        color: enabled ? AppTheme.accent.opacity(configuration.isPressed ? 0.15 : 0.28) : .clear,
+                        radius: configuration.isPressed ? 2 : 6,
+                        y: configuration.isPressed ? 1 : 2
+                    )
             )
-            .opacity(configuration.isPressed && enabled ? 0.88 : 1)
+            .scaleEffect(configuration.isPressed && enabled ? 0.98 : 1)
+            .opacity(enabled ? 1 : 0.55)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

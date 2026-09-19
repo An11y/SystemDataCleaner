@@ -4,7 +4,9 @@ import SwiftUI
 
 @MainActor
 final class CleanerViewModel: ObservableObject {
-    @Published var categories: [CategoryScan] = []
+    @Published var categories: [CategoryScan] = [] {
+        didSet { recomputeByteCaches() }
+    }
     @Published var isScanning = false
     @Published var isCleaning = false
     @Published var statusText = L10n.readyStatus
@@ -31,19 +33,54 @@ final class CleanerViewModel: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private var cleanTask: Task<Void, Never>?
     private var successHideTask: Task<Void, Never>?
+    private var lastProgressUI = Date.distantPast
 
     private let smartCautionThreshold: Int64 = 100_000_000
 
-    var selectedBytes: Int64 {
-        categories.reduce(0) { $0 + $1.selectedBytes }
+    private var cachedTotalBytes: Int64 = 0
+    private var cachedSelectedBytes: Int64 = 0
+    private var cachedSectionBytes: [CleanSection: Int64] = [:]
+    private var cachedMaxCategoryBytes: Int64 = 1
+
+    var totalBytes: Int64 { cachedTotalBytes }
+
+    var maxCategoryBytes: Int64 { cachedMaxCategoryBytes }
+
+    /// Сумма секции без двойного учёта пересекающихся путей.
+    func sectionBytes(_ scans: [CategoryScan]) -> Int64 {
+        guard let section = scans.first?.category.section else {
+            return PathAccounting.nonOverlappingTotal(of: scans)
+        }
+        return cachedSectionBytes[section] ?? PathAccounting.nonOverlappingTotal(of: scans)
     }
 
-    var totalBytes: Int64 {
-        categories.reduce(0) { $0 + $1.byteCount }
-    }
+    var selectedBytes: Int64 { cachedSelectedBytes }
 
-    var maxCategoryBytes: Int64 {
-        max(categories.map(\.byteCount).max() ?? 1, 1)
+    private func recomputeByteCaches() {
+        cachedTotalBytes = PathAccounting.nonOverlappingTotal(of: categories)
+        cachedMaxCategoryBytes = max(categories.map(\.byteCount).max() ?? 1, 1)
+
+        let entries = categories.flatMap { scan -> [(path: String, bytes: Int64)] in
+            if scan.items.isEmpty {
+                guard scan.isSelected, scan.byteCount > 0 else { return [] }
+                if scan.paths.count == 1 {
+                    return [(path: scan.paths[0], bytes: scan.byteCount)]
+                }
+                return [(path: "__sel__/\(scan.category.rawValue)", bytes: scan.byteCount)]
+            }
+            return scan.items.filter(\.isSelected).map { (path: $0.path, bytes: $0.byteCount) }
+        }
+        cachedSelectedBytes = PathAccounting.nonOverlappingBytes(entries)
+
+        var sectionMap: [CleanSection: [CategoryScan]] = [:]
+        for scan in categories {
+            sectionMap[scan.category.section, default: []].append(scan)
+        }
+        var next: [CleanSection: Int64] = [:]
+        for (section, scans) in sectionMap {
+            next[section] = PathAccounting.nonOverlappingTotal(of: scans)
+        }
+        cachedSectionBytes = next
     }
 
     var selectedCount: Int {
@@ -124,9 +161,25 @@ final class CleanerViewModel: ObservableObject {
     }
 
     var recommendedBytes: Int64 {
-        categories.reduce(0) { sum, scan in
-            sum + smartBytes(for: scan)
+        let smartScans = categories.compactMap { scan -> CategoryScan? in
+            let bytes = smartBytes(for: scan)
+            guard bytes > 0 else { return nil }
+            var copy = scan
+            copy.byteCount = bytes
+            if !copy.items.isEmpty {
+                // Для caution — только крупные items, для safe — все
+                switch scan.category.risk {
+                case .safe:
+                    break
+                case .caution:
+                    copy.items = copy.items.filter { $0.byteCount >= smartCautionThreshold }
+                case .danger:
+                    return nil
+                }
+            }
+            return copy
         }
+        return PathAccounting.nonOverlappingTotal(of: smartScans)
     }
 
     var formattedRecommended: String {
@@ -226,8 +279,8 @@ final class CleanerViewModel: ObservableObject {
 
     func refreshPermissions() {
         Task {
-            let fda = await engine.hasFullDiskAccess()
-            let free = await engine.freeDiskBytes()
+            let fda = engine.hasFullDiskAccess()
+            let free = engine.freeDiskBytes()
             needsFullDiskAccess = !fda
             freeDiskBytes = free
         }
@@ -268,6 +321,7 @@ final class CleanerViewModel: ObservableObject {
                 categories[i].setAllItems(selected: turnOn)
             }
         }
+        recomputeByteCaches()
     }
 
     func toggleItem(category id: CleanCategoryID, itemId: UUID) {
@@ -275,6 +329,7 @@ final class CleanerViewModel: ObservableObject {
               let ii = categories[ci].items.firstIndex(where: { $0.id == itemId }) else { return }
         categories[ci].items[ii].isSelected.toggle()
         categories[ci].syncParentFromItems()
+        recomputeByteCaches()
     }
 
     func selectSafeOnly() {
@@ -404,9 +459,13 @@ final class CleanerViewModel: ObservableObject {
                 progress: { [weak self] done, total, name in
                     Task { @MainActor in
                         guard let self, !Task.isCancelled else { return }
+                        let now = Date()
+                        // Не дёргать UI на каждую категорию — реже прогресс/статус.
+                        guard done == total || now.timeIntervalSince(self.lastProgressUI) >= 0.2 else { return }
+                        self.lastProgressUI = now
                         self.scanProgress = total > 0 ? Double(done) / Double(total) : 0
                         let found = self.totalBytes > 0
-                            ? " · найдено уже \(self.formattedTotal)"
+                            ? " · \(self.formattedTotal)"
                             : ""
                         self.statusText = L10n.scanningItem(done, total, name, found)
                     }
@@ -431,7 +490,7 @@ final class CleanerViewModel: ObservableObject {
             categories = applySelection(previous, to: result)
             isScanning = false
             scanProgress = 1
-            freeDiskBytes = await engine.freeDiskBytes()
+            freeDiskBytes = engine.freeDiskBytes()
             statusText = totalBytes > 0
                 ? L10n.foundSummary(formattedTotal, nonEmptyCount)
                 : L10n.diskLooksGood
@@ -477,8 +536,12 @@ final class CleanerViewModel: ObservableObject {
                 let result = await engine.scanAll(
                     progress: { [weak self] done, total, name in
                         Task { @MainActor in
-                            self?.scanProgress = total > 0 ? Double(done) / Double(total) : 0
-                            self?.statusText = L10n.recalculatingItem(done, total, name)
+                            guard let self else { return }
+                            let now = Date()
+                            guard done == total || now.timeIntervalSince(self.lastProgressUI) >= 0.25 else { return }
+                            self.lastProgressUI = now
+                            self.scanProgress = total > 0 ? Double(done) / Double(total) : 0
+                            self.statusText = L10n.recalculatingItem(done, total, name)
                         }
                     },
                     onPartial: { [weak self] partial in
@@ -488,7 +551,7 @@ final class CleanerViewModel: ObservableObject {
                     }
                 )
                 categories = applySelection(previous, to: result)
-                freeDiskBytes = await engine.freeDiskBytes()
+                freeDiskBytes = engine.freeDiskBytes()
                 isCleaning = false
 
                 var msg = L10n.freed(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file))

@@ -1,9 +1,33 @@
 import Foundation
 
-actor CleanerEngine {
+/// Потокобезопасный кэш размеров каталогов для параллельного скана.
+private final class SizeCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: Int64] = [:]
+
+    func reset() {
+        lock.lock()
+        storage.removeAll(keepingCapacity: true)
+        lock.unlock()
+    }
+
+    func get(_ key: String) -> Int64? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage[key]
+    }
+
+    func set(_ key: String, _ value: Int64) {
+        lock.lock()
+        storage[key] = value
+        lock.unlock()
+    }
+}
+
+final class CleanerEngine: @unchecked Sendable {
     private let fm = FileManager.default
     private let home: URL
-    private var sizeCache: [String: Int64] = [:]
+    private let sizeCache = SizeCache()
 
     private let bannedCacheNames: Set<String> = [
         "CloudKit", "com.apple.Safari", "FamilyCircle", "PassKit",
@@ -36,24 +60,26 @@ actor CleanerEngine {
         progress: @Sendable (Int, Int, String) -> Void,
         onPartial: (@Sendable ([CategoryScan]) -> Void)? = nil
     ) async -> [CategoryScan] {
-        sizeCache.removeAll(keepingCapacity: true)
+        sizeCache.reset()
         let ids = Array(CleanCategoryID.allCases)
         let total = ids.count
         var results: [CategoryScan?] = Array(repeating: nil, count: total)
 
+        // Реальный параллелизм (раньше actor сериализовал всё). 4 — баланс CPU/диска.
+        let maxConcurrent = 4
+
         await withTaskGroup(of: (Int, CategoryScan)?.self) { group in
             var submitted = 0
-            let maxConcurrent = 8
 
             func submitNext() {
                 guard submitted < total else { return }
                 let i = submitted
                 submitted += 1
                 let id = ids[i]
-                group.addTask {
+                group.addTask(priority: .utility) { [weak self] in
+                    guard let self else { return nil }
                     if Task.isCancelled { return nil }
-                    let scan = await self.scan(id)
-                    return (i, scan)
+                    return (i, self.scan(id))
                 }
             }
 
@@ -62,17 +88,33 @@ actor CleanerEngine {
             }
 
             var completed = 0
+            var lastPartialAt = ContinuousClock.Instant.now
+            var lastPartialCount = 0
+            let partialInterval: ContinuousClock.Duration = .milliseconds(280)
+
             for await item in group {
                 if Task.isCancelled {
                     group.cancelAll()
                     break
                 }
-                guard let (index, scan) = item else { continue }
+                guard let (index, scan) = item else {
+                    submitNext()
+                    continue
+                }
                 results[index] = scan
                 completed += 1
                 progress(completed, total, scan.category.title)
-                let partial = results.compactMap { $0 }.sorted { $0.byteCount > $1.byteCount }
-                onPartial?(partial)
+
+                let now = ContinuousClock.Instant.now
+                let duePartial = completed == total
+                    || completed - lastPartialCount >= 8
+                    || now - lastPartialAt >= partialInterval
+                if duePartial, let onPartial {
+                    let partial = results.compactMap { $0 }.sorted { $0.byteCount > $1.byteCount }
+                    onPartial(partial)
+                    lastPartialAt = now
+                    lastPartialCount = completed
+                }
                 submitNext()
             }
         }
@@ -106,7 +148,7 @@ actor CleanerEngine {
         return !anyExists
     }
 
-    func scan(_ id: CleanCategoryID) async -> CategoryScan {
+    func scan(_ id: CleanCategoryID) -> CategoryScan {
         switch id.strategy {
         case .timeMachineSnapshots:
             return scanTimeMachineSnapshots(id)
@@ -130,6 +172,10 @@ actor CleanerEngine {
             return scanDocumentRevisions(id)
         case .containerAppCaches:
             return scanContainerAppCaches(id)
+        case .editorStateBloat:
+            return scanEditorStateBloat(id)
+        case .electronAppJunk:
+            return scanElectronAppJunk(id)
         case .shell where id == .unavailableSimulators:
             let size = directorySize(at: home.appendingPathComponent("Library/Developer/CoreSimulator/Devices"))
             return CategoryScan(
@@ -215,7 +261,8 @@ actor CleanerEngine {
                 case .downloadInstallers, .oldLargeDownloads, .chromeProfilesDeep,
                      .orphanedAppSupport, .crashReportsDeep, .xcodeOldDeviceSupport,
                      .projectArtifacts, .groupContainerCaches,
-                     .documentRevisions, .containerAppCaches:
+                     .documentRevisions, .containerAppCaches,
+                     .editorStateBloat, .electronAppJunk:
                     for item in scan.items where item.isSelected {
                         if Task.isCancelled { break }
                         try? fm.removeItem(atPath: item.path)
@@ -224,7 +271,7 @@ actor CleanerEngine {
             } catch {
                 failures.append("\(scan.category.title): \(error.localizedDescription)")
             }
-            let after = await self.scan(scan.category)
+            let after = self.scan(scan.category)
             freed += max(0, beforeTotal - after.byteCount)
         }
 
@@ -244,8 +291,8 @@ actor CleanerEngine {
     // MARK: - File scan
 
     private func scanFileCategory(_ id: CleanCategoryID) -> CategoryScan {
-        let targets = resolveTargets(for: id)
-        var total: Int64 = 0
+        // Сначала убираем вложенные таргеты (parent + child иначе считаются дважды).
+        let targets = collapseNestedURLs(resolveTargets(for: id))
         var existingPaths: [String] = []
         var folderSizes: [(String, Int64)] = []
 
@@ -269,23 +316,25 @@ actor CleanerEngine {
                         options: [.skipsHiddenFiles]
                     )) ?? []
                     for child in children {
+                        if id == .userCaches, shouldExcludeFromUserCaches(child.lastPathComponent) {
+                            continue
+                        }
                         let size = directorySize(at: child)
-                        total += size
                         if size > 0 { folderSizes.append((child.path, size)) }
                     }
                 } else {
                     let size = directorySize(at: url)
-                    total += size
-                    folderSizes.append((url.path, size))
+                    if size > 0 { folderSizes.append((url.path, size)) }
                 }
-            } else if let size = (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int64) {
-                total += size
+            } else if let size = (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int64), size > 0 {
                 folderSizes.append((url.path, size))
             }
         }
 
+        let collapsed = PathAccounting.collapseEntries(folderSizes)
+        let total = collapsed.reduce(0) { $0 + $1.1 }
         let defaultSel = id.selectedByDefault
-        let items = folderSizes
+        let items = collapsed
             .sorted { $0.1 > $1.1 }
             .map { CleanItem(path: $0.0, byteCount: $0.1, isSelected: defaultSel && $0.1 > 0) }
 
@@ -306,17 +355,19 @@ actor CleanerEngine {
         note: String?,
         forceSelected: Bool?
     ) -> CategoryScan {
-        var total: Int64 = 0
+        var folderSizes: [(String, Int64)] = []
         var paths: [String] = []
-        var items: [CleanItem] = []
         let defaultSel = forceSelected ?? id.selectedByDefault
-        for u in urls where fm.fileExists(atPath: u.path) {
+        for u in collapseNestedURLs(urls) where fm.fileExists(atPath: u.path) {
             let size = directorySize(at: u)
             paths.append(u.path)
-            total += size
-            items.append(CleanItem(path: u.path, byteCount: size, isSelected: defaultSel && size > 0))
+            if size > 0 { folderSizes.append((u.path, size)) }
         }
-        items.sort { $0.byteCount > $1.byteCount }
+        let collapsed = PathAccounting.collapseEntries(folderSizes)
+        let total = collapsed.reduce(0) { $0 + $1.1 }
+        let items = collapsed
+            .sorted { $0.1 > $1.1 }
+            .map { CleanItem(path: $0.0, byteCount: $0.1, isSelected: defaultSel && $0.1 > 0) }
         return CategoryScan(
             category: id,
             byteCount: total,
@@ -326,6 +377,21 @@ actor CleanerEngine {
             exists: total > 0,
             detailNote: note
         )
+    }
+
+    /// Папки Library/Caches, которые уже покрыты узкими категориями.
+    private func shouldExcludeFromUserCaches(_ name: String) -> Bool {
+        if bannedCacheNames.contains(name) { return true }
+        let lower = name.lowercased()
+        let owned: [String] = [
+            "google", "chrome", "chromium", "brave", "firefox", "mozilla", "edge", "opera", "vivaldi",
+            "safari", "orion", "arc", "zen-browser", "telegram", "discord", "slack", "whatsapp",
+            "spotify", "adobe", "zoom", "steam", "figma", "notion", "dropbox", "electron",
+            "microsoft", "onedrive", "viber", "signal", "loom", "miro", "docker", "homebrew",
+            "grype", "trivy", "snyk", "playwright", "shipit", "cursor", "windsurf",
+            "com.microsoft.vscode", "com.todesktop"
+        ]
+        return owned.contains { lower.contains($0) }
     }
 
     // MARK: - Targets
@@ -536,7 +602,9 @@ actor CleanerEngine {
         case .playwright:
             return existing([
                 "Library/Caches/ms-playwright",
-                ".cache/ms-playwright"
+                "Library/Caches/ms-playwright-mcp",
+                ".cache/ms-playwright",
+                ".cache/ms-playwright-mcp"
             ])
         case .cypress:
             return existingAbs([
@@ -556,18 +624,24 @@ actor CleanerEngine {
                 "Library/Caches/Cursor",
                 "Library/Caches/Windsurf",
                 "Library/Caches/com.microsoft.VSCode",
+                "Library/Caches/cursor-compile-cache",
                 "Library/Application Support/Code/Cache",
                 "Library/Application Support/Code/CachedData",
                 "Library/Application Support/Code/CachedExtensions",
                 "Library/Application Support/Code/CachedExtensionVSIXs",
                 "Library/Application Support/Code/Crashpad",
                 "Library/Application Support/Code/GPUCache",
+                "Library/Application Support/Code/logs",
+                "Library/Application Support/Code/WebStorage",
                 "Library/Application Support/Cursor/Cache",
                 "Library/Application Support/Cursor/CachedData",
                 "Library/Application Support/Cursor/GPUCache",
                 "Library/Application Support/Cursor/Crashpad",
+                "Library/Application Support/Cursor/logs",
+                "Library/Application Support/Cursor/CachedProfilesData",
                 "Library/Application Support/Windsurf/Cache",
-                "Library/Application Support/Windsurf/CachedData"
+                "Library/Application Support/Windsurf/CachedData",
+                "Library/Application Support/Windsurf/logs"
             ])
         case .androidStudio:
             var urls = existing([
@@ -632,7 +706,8 @@ actor CleanerEngine {
                 home.appendingPathComponent("Library/Application Support/LM Studio")
             ])
         case .browserCaches:
-            var urls = existing([
+            // Только Library/Caches — профили Application Support считает chromeProfilesDeep.
+            return existing([
                 "Library/Caches/Google/Chrome",
                 "Library/Caches/com.google.Chrome",
                 "Library/Caches/Chromium",
@@ -652,39 +727,10 @@ actor CleanerEngine {
                 "Library/Caches/com.kagi.orion",
                 "Library/Caches/company.thebrowser.dia",
                 "Library/Caches/app.zen-browser.zen",
-                "Library/Caches/org.mozilla.firefox",
-                "Library/Caches/com.apple.SafariTechnologyPreview",
-                "Library/Application Support/Google/Chrome/Default/Service Worker",
-                "Library/Application Support/Google/Chrome/Default/Code Cache",
-                "Library/Application Support/Google/Chrome/Default/GPUCache",
-                "Library/Application Support/Google/Chrome/GrShaderCache",
-                "Library/Application Support/Google/Chrome/ShaderCache",
-                "Library/Application Support/Arc/Default/Service Worker",
-                "Library/Application Support/Arc/Default/Code Cache",
-                "Library/Application Support/Arc/Default/GPUCache",
-                "Library/Application Support/BraveSoftware/Brave-Browser/Default/Code Cache",
-                "Library/Application Support/BraveSoftware/Brave-Browser/Default/GPUCache",
-                "Library/Application Support/Microsoft Edge/Default/Code Cache",
-                "Library/Application Support/Microsoft Edge/Default/GPUCache"
+                "Library/Caches/com.apple.SafariTechnologyPreview"
             ])
-            // Доп. профили Chrome / Arc / Edge (Profile 1…)
-            for browserRoot in [
-                "Library/Application Support/Google/Chrome",
-                "Library/Application Support/Arc",
-                "Library/Application Support/Microsoft Edge",
-                "Library/Application Support/BraveSoftware/Brave-Browser"
-            ] {
-                let root = home.appendingPathComponent(browserRoot)
-                guard let kids = try? fm.contentsOfDirectory(atPath: root.path) else { continue }
-                for name in kids where name == "Default" || name.hasPrefix("Profile ") {
-                    for sub in ["Code Cache", "GPUCache", "Service Worker", "ShaderCache", "GrShaderCache"] {
-                        let p = root.appendingPathComponent(name).appendingPathComponent(sub)
-                        if fm.fileExists(atPath: p.path) { urls.append(p) }
-                    }
-                }
-            }
-            return uniqueURLs(urls)
         case .messengerCaches:
+            // WhatsApp Media и глубокий Telegram — отдельные категории, здесь только кэши.
             return existing([
                 "Library/Caches/ru.keepcoder.Telegram",
                 "Library/Group Containers/6N38VWS5BX.ru.keepcoder.Telegram.TelegramShare",
@@ -699,15 +745,14 @@ actor CleanerEngine {
                 "Library/Application Support/discord/GPUCache",
                 "Library/Caches/com.hnc.Discord",
                 "Library/Caches/com.apple.MobileSMS",
-                "Library/Group Containers/group.net.whatsapp.WhatsApp.shared",
                 "Library/Caches/net.whatsapp.WhatsApp",
+                "Library/Group Containers/group.net.whatsapp.WhatsApp.shared/Library/Caches",
                 "Library/Application Support/ViberPC/data",
                 "Library/Caches/com.viber.osx",
                 "Library/Application Support/Signal/Cache",
                 "Library/Application Support/Signal/Code Cache",
                 "Library/Application Support/Signal/GPUCache",
-                "Library/Caches/org.telegram.desktop",
-                "Library/Application Support/Telegram Desktop/tdata/user_data/cache"
+                "Library/Caches/org.telegram.desktop"
             ])
         case .officeCaches:
             return existing([
@@ -731,12 +776,12 @@ actor CleanerEngine {
                 "Library/Containers/net.whatsapp.WhatsApp/Data/Library/Caches"
             ])
         case .cloudStorageCaches:
+            // OneDrive Caches уже в officeCaches.
             return existingAbs([
                 home.appendingPathComponent("Library/Caches/CloudKit"),
                 home.appendingPathComponent("Library/Caches/com.apple.bird"),
                 home.appendingPathComponent("Library/Application Support/Google/DriveFS"),
                 home.appendingPathComponent("Library/Caches/com.google.drivefs"),
-                home.appendingPathComponent("Library/Caches/com.microsoft.OneDrive"),
                 home.appendingPathComponent("Library/CloudStorage/.Trash"),
                 home.appendingPathComponent("Library/Application Support/OneDrive"),
                 home.appendingPathComponent("Library/Caches/com.dropbox.DropboxMacUpdate")
@@ -782,7 +827,13 @@ actor CleanerEngine {
             return existing([
                 "Library/Application Support/Steam/appcache",
                 "Library/Application Support/Steam/steamapps/shadercache",
-                "Library/Caches/com.valvesoftware.steam"
+                "Library/Application Support/Steam/steamapps/temp",
+                "Library/Application Support/Steam/steamapps/downloading",
+                "Library/Application Support/Steam/depotcache",
+                "Library/Application Support/Steam/logs",
+                "Library/Application Support/Steam/htmlcache",
+                "Library/Caches/com.valvesoftware.steam",
+                "Library/Caches/com.valvesoftware.steam.helper"
             ])
         case .unityCache:
             return existing([
@@ -832,7 +883,9 @@ actor CleanerEngine {
                 "Library/Application Support/Notion/Cache",
                 "Library/Application Support/Notion/Code Cache",
                 "Library/Application Support/Notion/GPUCache",
-                "Library/Caches/notion.id"
+                "Library/Caches/notion.id",
+                "Library/Caches/notion.id.ShipIt",
+                "Library/Caches/notion-updater"
             ])
         case .dropboxCache:
             return existing([
@@ -923,7 +976,7 @@ actor CleanerEngine {
                 home.appendingPathComponent("Library/Caches/s.jupyternotebook")
             ])
         case .systemUpdateLeftovers:
-            return existing([
+            var urls = existing([
                 "Library/Updates",
                 "Library/Caches/com.apple.SoftwareUpdate",
                 "Library/Caches/com.apple.MobileSoftwareUpdate",
@@ -931,6 +984,15 @@ actor CleanerEngine {
                 "Library/iTunes/iPhone Software Updates",
                 "Library/Application Support/com.apple.MobileSoftwareUpdate"
             ])
+            // Остатки ShipIt / Sparkle-установщиков в Caches (часто сотни МБ–ГБ).
+            let caches = home.appendingPathComponent("Library/Caches")
+            if let kids = try? fm.contentsOfDirectory(atPath: caches.path) {
+                for name in kids where name.hasSuffix(".ShipIt") || name.hasSuffix("-updater") || name.hasSuffix("Updater") {
+                    let p = caches.appendingPathComponent(name)
+                    if fm.fileExists(atPath: p.path) { urls.append(p) }
+                }
+            }
+            return uniqueURLs(urls)
         case .instrumentsTraces:
             return existing([
                 "Library/Developer/Xcode/Instruments",
@@ -957,13 +1019,32 @@ actor CleanerEngine {
                 "Library/Application Support/Notion Calendar/Code Cache"
             ])
         case .telegramMediaDeep:
-            return existing([
-                "Library/Group Containers/6N38VWS5BX.ru.keepcoder.Telegram",
-                "Library/Caches/ru.keepcoder.Telegram",
-                "Library/Application Support/Telegram Desktop/tdata/user_data",
-                "Library/Application Support/Telegram Desktop/tdata/user_data/cache",
-                "Library/Application Support/Telegram Desktop/tdata/user_data/media_cache"
+            // Все аккаунты Telegram Desktop (user_data, user_data#2…) + tupdates.
+            var urls: [URL] = []
+            let tdata = home.appendingPathComponent("Library/Application Support/Telegram Desktop/tdata")
+            if let kids = try? fm.contentsOfDirectory(atPath: tdata.path) {
+                for name in kids where name == "user_data" || name.hasPrefix("user_data#") {
+                    let account = tdata.appendingPathComponent(name)
+                    if fm.fileExists(atPath: account.path) { urls.append(account) }
+                }
+            }
+            let tupdates = home.appendingPathComponent("Library/Application Support/Telegram Desktop/tupdates")
+            if fm.fileExists(atPath: tupdates.path) { urls.append(tupdates) }
+            let emoji = home.appendingPathComponent("Library/Application Support/Telegram Desktop/tdata/emoji")
+            if fm.fileExists(atPath: emoji.path) { urls.append(emoji) }
+            return uniqueURLs(urls)
+        case .secToolCaches:
+            return existingAbs([
+                home.appendingPathComponent("Library/Caches/grype"),
+                home.appendingPathComponent("Library/Caches/trivy"),
+                home.appendingPathComponent("Library/Caches/snyk"),
+                home.appendingPathComponent(".cache/trivy"),
+                home.appendingPathComponent(".cache/grype"),
+                home.appendingPathComponent(".cache/snyk"),
+                home.appendingPathComponent("Library/Caches/dotslash")
             ])
+        case .editorStateBloat, .electronAppJunk:
+            return []
         case .dockerDesktopData:
             return existing([
                 "Library/Containers/com.docker.docker/Data",
@@ -1193,7 +1274,10 @@ actor CleanerEngine {
             for root in scan.paths {
                 let children = (try? fm.contentsOfDirectory(atPath: root)) ?? []
                 for name in children {
-                    if scan.category == .userCaches, bannedCacheNames.contains(name) { continue }
+                    if scan.category == .userCaches,
+                       bannedCacheNames.contains(name) || shouldExcludeFromUserCaches(name) {
+                        continue
+                    }
                     let full = (root as NSString).appendingPathComponent(name)
                     if scan.category == .aiDevTools {
                         if ["projects", "logs", "sessions", "cache", "Caches", "tmp", "ai-tracking"].contains(name)
@@ -1243,7 +1327,8 @@ actor CleanerEngine {
                 .containerAppCaches, .documentRevisions, .mlModels, .proVideoApps,
                 .officeCaches, .whatsappMedia, .cloudStorageCaches, .uvRyeCache, .gitLfsCache,
                 .oldLargeDownloads, .chromeProfilesDeep, .orphanedAppSupport,
-                .crashReportsDeep, .xcodeOldDeviceSupport
+                .crashReportsDeep, .xcodeOldDeviceSupport, .editorStateBloat, .electronAppJunk,
+                .secToolCaches
             ]
             if deleteWhole.contains(category) {
                 try fm.removeItem(atPath: path)
@@ -1315,8 +1400,7 @@ actor CleanerEngine {
 
     private func scanProjectArtifacts(_ id: CleanCategoryID) -> CategoryScan {
         let roots = ["Projects", "Developer", "repos", "dev", "code", "Code", "workspace", "Work",
-                     "src", "Sites", "github", "gitlab", "GitHub", "work", "lab", "sandbox",
-                     "Desktop", "Documents"]
+                     "src", "Sites", "github", "gitlab", "GitHub", "work", "lab", "sandbox"]
             .map { home.appendingPathComponent($0) }
             .filter { fm.fileExists(atPath: $0.path) }
 
@@ -1352,9 +1436,9 @@ actor CleanerEngine {
                     depthSkip.append(url.path)
                     enumerator.skipDescendants()
                 }
-                if hits.count >= 450 { break }
+                if hits.count >= 180 { break }
             }
-            if hits.count >= 450 { break }
+            if hits.count >= 180 { break }
         }
 
         hits.sort { $0.byteCount > $1.byteCount }
@@ -1544,28 +1628,177 @@ actor CleanerEngine {
         let installerExts: Set<String> = ["dmg", "pkg", "iso", "ipsw"]
         let files = (try? fm.contentsOfDirectory(
             at: downloads,
-            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey],
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey, .isDirectoryKey],
             options: [.skipsHiddenFiles]
         )) ?? []
         var hits: [CleanItem] = []
-        var total: Int64 = 0
+        var folderSizes: [(String, Int64)] = []
         for file in files {
-            let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey])
+            let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey, .isDirectoryKey])
+            if values?.isDirectory == true {
+                let size = directorySize(at: file)
+                let age = values?.contentModificationDate.map { Date().timeIntervalSince($0) } ?? 0
+                // Папки вроде «Telegram Desktop» в Загрузках
+                if size >= 50_000_000 || (size > 10_000_000 && age > 14 * 24 * 3600) {
+                    folderSizes.append((file.path, size))
+                }
+                continue
+            }
             guard values?.isRegularFile == true else { continue }
-            // Установщики уже в отдельной категории
             if installerExts.contains(file.pathExtension.lowercased()) { continue }
             let size = Int64(values?.fileSize ?? 0)
             let age = values?.contentModificationDate.map { Date().timeIntervalSince($0) } ?? 0
             if size >= 20_000_000 || (size > 2_000_000 && age > 7 * 24 * 3600) {
-                total += size
-                hits.append(CleanItem(path: file.path, byteCount: size, isSelected: false))
+                folderSizes.append((file.path, size))
             }
         }
+        let collapsed = PathAccounting.collapseEntries(folderSizes)
+        hits = collapsed.map { CleanItem(path: $0.0, byteCount: $0.1, isSelected: false) }
         hits.sort { $0.byteCount > $1.byteCount }
+        let total = hits.reduce(0) { $0 + $1.byteCount }
         return CategoryScan(
             category: id, byteCount: total, paths: [downloads.path],
             items: hits, isSelected: false, exists: total > 0,
-            detailNote: L10n.t("Large/old Downloads — pick files", "Крупные или старые файлы в Загрузках — галочки по файлам")
+            detailNote: L10n.t("Large/old Downloads — pick files & folders", "Крупные/старые Загрузки — галочки по файлам и папкам")
+        )
+    }
+
+    private func scanEditorStateBloat(_ id: CleanCategoryID) -> CategoryScan {
+        let editors = ["Cursor", "Code", "Code - Insiders", "Windsurf", "VSCodium"]
+        var folderSizes: [(String, Int64)] = []
+        var roots: [String] = []
+
+        func consider(_ url: URL, minBytes: Int64 = 5_000_000) {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return }
+            let size: Int64
+            if isDir.boolValue {
+                size = directorySize(at: url)
+            } else {
+                size = (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+            }
+            guard size >= minBytes else { return }
+            folderSizes.append((url.path, size))
+        }
+
+        for editor in editors {
+            let root = home.appendingPathComponent("Library/Application Support/\(editor)")
+            guard fm.fileExists(atPath: root.path) else { continue }
+            roots.append(root.path)
+
+            for rel in [
+                "User/History",
+                "User/workspaceStorage",
+                "snapshots",
+                "logs",
+                "Partitions",
+                "CachedData",
+                "CachedExtensions",
+                "CachedExtensionVSIXs",
+                "WebStorage",
+                "User/globalStorage/anysphere.cursor-agent-worker",
+                "User/globalStorage/anysphere.cursor-retrieval"
+            ] {
+                consider(root.appendingPathComponent(rel))
+            }
+
+            let gs = root.appendingPathComponent("User/globalStorage")
+            if let kids = try? fm.contentsOfDirectory(atPath: gs.path) {
+                for name in kids {
+                    let lower = name.lowercased()
+                    if lower.hasSuffix(".vscdb")
+                        || lower.hasSuffix(".vscdb.backup")
+                        || lower.hasSuffix(".vscdb-wal")
+                        || lower.contains("cursor-agent")
+                        || lower.hasSuffix(".db") && (lower.contains("conversation") || lower.contains("state")) {
+                        consider(gs.appendingPathComponent(name), minBytes: 2_000_000)
+                    }
+                }
+            }
+        }
+
+        // Agent transcripts / project caches в ~/.cursor
+        consider(home.appendingPathComponent(".cursor/projects"), minBytes: 20_000_000)
+        consider(home.appendingPathComponent(".cursor/ai-tracking"), minBytes: 5_000_000)
+
+        let collapsed = PathAccounting.collapseEntries(folderSizes)
+        let items = collapsed
+            .sorted { $0.1 > $1.1 }
+            .map { CleanItem(path: $0.0, byteCount: $0.1, isSelected: false) }
+        let total = collapsed.reduce(0) { $0 + $1.1 }
+        return CategoryScan(
+            category: id,
+            byteCount: total,
+            paths: roots,
+            items: items,
+            isSelected: false,
+            exists: total > 0,
+            detailNote: items.isEmpty ? nil : L10n.t(
+                "Cursor/VS Code state DB can grow to tens of GB — chat history may reset",
+                "База Cursor/VS Code может раздуться до десятков ГБ — история чатов может сброситься"
+            )
+        )
+    }
+
+    private func scanElectronAppJunk(_ id: CleanCategoryID) -> CategoryScan {
+        let support = home.appendingPathComponent("Library/Application Support")
+        guard fm.fileExists(atPath: support.path) else {
+            return CategoryScan(category: id, byteCount: 0, paths: [], items: [], isSelected: false, exists: false, detailNote: nil)
+        }
+
+        // Уже покрыто другими категориями.
+        let skipApps: Set<String> = [
+            "Cursor", "Code", "Code - Insiders", "Windsurf", "VSCodium",
+            "Google", "Chromium", "Arc", "BraveSoftware", "Microsoft Edge", "Firefox",
+            "Steam", "Telegram Desktop", "discord", "Slack", "Signal", "Figma",
+            "Adobe", "Docker Desktop", "com.apple.wallpaper", "Notion", "Notion Calendar"
+        ]
+        // Только самые жирные leaf — без глубокого обхода вложенных профилей.
+        let leafs = ["Cache", "Caches", "Code Cache", "GPUCache", "Partitions", "logs", "Crashpad"]
+
+        var folderSizes: [(String, Int64)] = []
+        guard let apps = try? fm.contentsOfDirectory(atPath: support.path) else {
+            return CategoryScan(category: id, byteCount: 0, paths: [], items: [], isSelected: false, exists: false, detailNote: nil)
+        }
+
+        var checked = 0
+        for name in apps {
+            if Task.isCancelled { break }
+            if skipApps.contains(name) { continue }
+            if name.lowercased().hasPrefix("com.apple") { continue }
+            let appRoot = support.appendingPathComponent(name)
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: appRoot.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            checked += 1
+            if checked > 80 { break }
+
+            for leaf in leafs {
+                let url = appRoot.appendingPathComponent(leaf)
+                guard fm.fileExists(atPath: url.path) else { continue }
+                let size = directorySize(at: url)
+                guard size >= 40_000_000 else { continue }
+                folderSizes.append((url.path, size))
+            }
+            if folderSizes.count >= 60 { break }
+        }
+
+        let collapsed = PathAccounting.collapseEntries(folderSizes)
+        let items = collapsed
+            .sorted { $0.1 > $1.1 }
+            .prefix(100)
+            .map { CleanItem(path: $0.0, byteCount: $0.1, isSelected: false) }
+        let total = items.reduce(0) { $0 + $1.byteCount }
+        return CategoryScan(
+            category: id,
+            byteCount: total,
+            paths: [support.path],
+            items: Array(items),
+            isSelected: false,
+            exists: total > 0,
+            detailNote: items.isEmpty ? nil : L10n.t(
+                "Electron Partitions/Cache — offline data may re-download",
+                "Electron Partitions/Cache — офлайн-данные могут скачаться снова"
+            )
         )
     }
 
@@ -1581,7 +1814,6 @@ actor CleanerEngine {
         let cacheLeafs = ["Code Cache", "GPUCache", "Service Worker", "ShaderCache",
                           "GrShaderCache", "Cache", "DawnCache", "File System"]
         var hits: [CleanItem] = []
-        var total: Int64 = 0
         var paths: [String] = []
 
         for rel in browserRoots {
@@ -1595,16 +1827,18 @@ actor CleanerEngine {
                     guard fm.fileExists(atPath: p.path) else { continue }
                     let size = directorySize(at: p)
                     guard size > 1_000_000 else { continue }
-                    total += size
                     hits.append(CleanItem(path: p.path, byteCount: size, isSelected: false))
                 }
             }
         }
         hits.sort { $0.byteCount > $1.byteCount }
+        let collapsed = PathAccounting.collapseEntries(hits.map { ($0.path, $0.byteCount) })
+        let items = collapsed.map { CleanItem(path: $0.0, byteCount: $0.1, isSelected: false) }
+        let total = collapsed.reduce(0) { $0 + $1.1 }
         return CategoryScan(
             category: id, byteCount: total, paths: paths,
-            items: hits, isSelected: false, exists: total > 0,
-            detailNote: hits.isEmpty ? nil : "Кэши всех профилей браузеров — сессии могут сброситься"
+            items: items, isSelected: false, exists: total > 0,
+            detailNote: items.isEmpty ? nil : "Кэши всех профилей браузеров — сессии могут сброситься"
         )
     }
 
@@ -1642,7 +1876,7 @@ actor CleanerEngine {
             // Bundle-id style folders often map to apps still installed via Containers — skip apple.*
             if lower.hasPrefix("com.apple") || lower.hasPrefix("group.com.apple") { return }
             let size = directorySize(at: url)
-            guard size > 30_000_000 else { return }
+            guard size > 15_000_000 else { return }
             // Prefer Cache / Logs / Crashpad subfolders if present
             let prefer = ["Cache", "Caches", "GPUCache", "Code Cache", "logs", "Logs", "Crashpad", "blob_storage"]
             if let kids = try? fm.contentsOfDirectory(atPath: url.path) {
@@ -1662,14 +1896,14 @@ actor CleanerEngine {
         }
 
         if let supportKids = try? fm.contentsOfDirectory(atPath: support.path) {
-            for name in supportKids.prefix(120) {
+            for name in supportKids.prefix(200) {
                 if Task.isCancelled { break }
                 consider(support.appendingPathComponent(name))
-                if hits.count >= 80 { break }
+                if hits.count >= 120 { break }
             }
         }
-        if hits.count < 80, let cacheKids = try? fm.contentsOfDirectory(atPath: caches.path) {
-            for name in cacheKids.prefix(80) {
+        if hits.count < 120, let cacheKids = try? fm.contentsOfDirectory(atPath: caches.path) {
+            for name in cacheKids.prefix(150) {
                 if Task.isCancelled { break }
                 let lower = name.lowercased()
                 if bannedCacheNames.contains(name) { continue }
@@ -1677,10 +1911,10 @@ actor CleanerEngine {
                 if installed.contains(where: { lower.contains($0) }) { continue }
                 let url = caches.appendingPathComponent(name)
                 let size = directorySize(at: url)
-                guard size > 12_000_000 else { continue }
+                guard size > 8_000_000 else { continue }
                 total += size
                 hits.append(CleanItem(path: url.path, byteCount: size, isSelected: false))
-                if hits.count >= 80 { break }
+                if hits.count >= 120 { break }
             }
         }
 
@@ -1792,7 +2026,25 @@ actor CleanerEngine {
 
     private func directorySize(at url: URL) -> Int64 {
         let key = url.standardizedFileURL.path
-        if let cached = sizeCache[key] { return cached }
+        if let cached = sizeCache.get(key) { return cached }
+
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: key, isDirectory: &isDir) else {
+            sizeCache.set(key, 0)
+            return 0
+        }
+        if !isDir.boolValue {
+            let size = (try? fm.attributesOfItem(atPath: key)[.size] as? Int64) ?? 0
+            sizeCache.set(key, size)
+            return size
+        }
+
+        // du -sk: на порядки быстрее полного enumerator по кэшам/node_modules.
+        if let kb = duKilobytes(at: key) {
+            let bytes = kb * 1024
+            sizeCache.set(key, bytes)
+            return bytes
+        }
 
         let keys: Set<URLResourceKey> = [
             .isRegularFileKey,
@@ -1803,9 +2055,9 @@ actor CleanerEngine {
         guard let enumerator = fm.enumerator(
             at: url,
             includingPropertiesForKeys: Array(keys),
-            options: []
+            options: [.skipsPackageDescendants]
         ) else {
-            sizeCache[key] = 0
+            sizeCache.set(key, 0)
             return 0
         }
 
@@ -1813,7 +2065,8 @@ actor CleanerEngine {
         var entryCount = 0
         for case let fileURL as URL in enumerator {
             entryCount += 1
-            if entryCount % 2000 == 0, Task.isCancelled { break }
+            if entryCount & 4095 == 0, Task.isCancelled { break }
+            if entryCount > 350_000 { break }
             guard let values = try? fileURL.resourceValues(forKeys: keys),
                   values.isRegularFile == true else { continue }
             if let allocated = values.totalFileAllocatedSize ?? values.fileAllocatedSize {
@@ -1822,8 +2075,28 @@ actor CleanerEngine {
                 total += Int64(values.fileSize ?? 0)
             }
         }
-        sizeCache[key] = total
+        sizeCache.set(key, total)
         return total
+    }
+
+    private func duKilobytes(at path: String) -> Int64? {
+        let process = Process()
+        let out = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
+        process.arguments = ["-sk", path]
+        process.standardOutput = out
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            guard let text = String(data: data, encoding: .utf8) else { return nil }
+            let num = text.prefix(while: { $0.isNumber || $0 == " " }).trimmingCharacters(in: .whitespaces)
+            return Int64(num)
+        } catch {
+            return nil
+        }
     }
 
     private func uniqueURLs(_ urls: [URL]) -> [URL] {
@@ -1834,6 +2107,13 @@ actor CleanerEngine {
             if seen.insert(p).inserted { out.append(u.standardizedFileURL) }
         }
         return out
+    }
+
+    /// Убирает URL, вложенные в другие URL из того же списка.
+    private func collapseNestedURLs(_ urls: [URL]) -> [URL] {
+        let unique = uniqueURLs(urls)
+        let keptPaths = Set(PathAccounting.collapsePaths(unique.map(\.path)))
+        return unique.filter { keptPaths.contains($0.standardizedFileURL.path) }
     }
 
     private func shellZsh(_ command: String) -> String? {

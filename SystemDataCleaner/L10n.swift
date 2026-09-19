@@ -318,6 +318,9 @@ enum L10n {
         case .dockerDesktopData: return t("Docker Desktop data", "Данные Docker Desktop")
         case .xcodeDocCaches: return t("Xcode docs / downloads", "Доки / загрузки Xcode")
         case .voltaAsdfNode: return t("Volta / asdf / n Node versions", "Volta / asdf / n версии Node")
+        case .editorStateBloat: return t("Cursor / VS Code state & history", "Cursor / VS Code: state и история")
+        case .electronAppJunk: return t("Electron app caches (Notion…)", "Electron-кэши (Notion…)")
+        case .secToolCaches: return t("Security scanner caches", "Кэши сканеров уязвимостей")
         }
     }
 }

@@ -92,19 +92,32 @@ struct ContentView: View {
 
     /// Статус под title bar — не ломает системные отступы toolbar.
     private var statusStrip: some View {
-        HStack(spacing: AppTheme.spaceXS) {
+        HStack(spacing: AppTheme.spaceSM) {
+            Circle()
+                .fill(model.isBusy ? AppTheme.accent : (model.totalBytes > 0 ? AppTheme.accent.opacity(0.7) : AppTheme.textTertiary))
+                .frame(width: 7, height: 7)
+                .opacity(model.isBusy ? 1 : 0.85)
             Text(model.statusText)
                 .font(AppTheme.body(12))
                 .foregroundStyle(AppTheme.textSecondary)
                 .lineLimit(1)
+                .contentTransition(.opacity)
             Spacer(minLength: 0)
+            if model.isBusy {
+                Text("\(Int(model.scanProgress * 100))%")
+                    .font(AppTheme.mono(11))
+                    .foregroundStyle(AppTheme.accent)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
         }
         .padding(.horizontal, AppTheme.pageInset)
-        .padding(.vertical, AppTheme.spaceXS)
-        .background(AppTheme.bg)
+        .padding(.vertical, 10)
+        .background(AppTheme.bg.opacity(0.92))
         .overlay(alignment: .bottom) {
             Rectangle().fill(AppTheme.border).frame(height: 1)
         }
+        .animation(.easeOut(duration: 0.2), value: model.isBusy)
     }
 
     // MARK: - Main
@@ -123,7 +136,10 @@ struct ContentView: View {
                 label: L10n.found,
                 value: model.totalBytes > 0 ? model.formattedTotal : "—",
                 hint: model.nonEmptyCount > 0 ? L10n.categoriesCount(model.nonEmptyCount) : L10n.afterScan,
-                tint: AppTheme.accent
+                tint: AppTheme.accent,
+                fill: model.categories.isEmpty
+                    ? 0
+                    : min(1, Double(model.nonEmptyCount) / Double(max(model.categories.count, 1)))
             )
             metricTile(
                 label: L10n.selected,
@@ -133,13 +149,15 @@ struct ContentView: View {
                 hint: model.hasSelection
                     ? L10n.categoriesShare(model.selectedCategoryCount, Int(model.selectionShare * 100))
                     : L10n.nothing,
-                tint: model.hasSelection ? AppTheme.warn : AppTheme.textSecondary
+                tint: model.hasSelection ? AppTheme.warn : AppTheme.textSecondary,
+                fill: model.selectionShare
             )
             metricTile(
                 label: L10n.free,
                 value: model.formattedFreeDisk ?? "—",
                 hint: L10n.onDisk,
-                tint: AppTheme.textSecondary
+                tint: AppTheme.textSecondary,
+                fill: 0
             )
         }
         .padding(.horizontal, AppTheme.pageInset)
@@ -147,32 +165,41 @@ struct ContentView: View {
         .padding(.bottom, AppTheme.spaceXS)
     }
 
-    private func metricTile(label: String, value: String, hint: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceXXS) {
+    private func metricTile(label: String, value: String, hint: String, tint: Color, fill: Double) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(AppTheme.body(11, weight: .semibold))
                 .foregroundStyle(AppTheme.textTertiary)
+                .textCase(.uppercase)
+                .tracking(0.4)
             Text(value)
-                .font(AppTheme.title(17))
+                .font(AppTheme.title(18))
                 .foregroundStyle(tint)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
             Text(hint)
                 .font(AppTheme.body(11))
                 .foregroundStyle(AppTheme.textSecondary)
                 .lineLimit(1)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(AppTheme.surfaceRaised)
+                    Capsule()
+                        .fill(tint.opacity(0.85))
+                        .frame(width: max(fill > 0 ? 4 : 0, geo.size.width * fill))
+                        .animation(.easeOut(duration: 0.35), value: fill)
+                }
+            }
+            .frame(height: 3)
+            .padding(.top, 2)
+            .opacity(fill > 0 ? 1 : 0.35)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(AppTheme.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                        .strokeBorder(AppTheme.border, lineWidth: 1)
-                )
-        )
+        .background(AppTheme.cardBackground())
     }
 
     private var tools: some View {
@@ -374,7 +401,7 @@ struct ContentView: View {
                     }
                 }
             } header: {
-                sectionHeader(section, count: items.count, bytes: items.reduce(0) { $0 + $1.byteCount })
+                sectionHeader(section, count: items.count, bytes: model.sectionBytes(items))
             }
         }
     }
@@ -443,20 +470,27 @@ struct ContentView: View {
     private var emptyState: some View {
         VStack(spacing: AppTheme.spaceMD) {
             Spacer()
-            Image(systemName: "internaldrive")
-                .font(.system(size: 44, weight: .ultraLight))
-                .foregroundStyle(AppTheme.accent)
+            ZStack {
+                Circle()
+                    .fill(AppTheme.accentSoft)
+                    .frame(width: 88, height: 88)
+                Image(systemName: "internaldrive.fill")
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundStyle(AppTheme.accent)
+                    .symbolRenderingMode(.hierarchical)
+            }
             Text(L10n.emptyTitle)
-                .font(AppTheme.title(20))
+                .font(AppTheme.title(22))
             Text(L10n.emptyBody)
                 .font(AppTheme.body(13))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
             Button(action: model.scan) {
                 Text(L10n.scanDisk)
                     .font(AppTheme.body(14, weight: .bold))
                     .foregroundStyle(AppTheme.onAccent)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
                     .padding(.vertical, 12)
             }
             .buttonStyle(PrimaryButtonStyle(enabled: true))
@@ -507,8 +541,8 @@ struct ContentView: View {
             .help("⌘⌫")
         }
         .padding(.horizontal, AppTheme.pageInset)
-        .padding(.vertical, AppTheme.spaceSM)
-        .background(AppTheme.surface)
+        .padding(.vertical, AppTheme.spaceMD)
+        .background(AppTheme.surface.opacity(0.95))
         .overlay(alignment: .top) {
             Rectangle().fill(AppTheme.border).frame(height: 1)
         }
@@ -637,8 +671,9 @@ struct ConfirmSheet: View {
             }
             .padding(AppTheme.spaceLG)
         }
-        .frame(width: 440, height: 420)
+        .frame(width: 460, height: 440)
         .background(AppTheme.bg)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
     }
 
     @ViewBuilder
@@ -769,6 +804,8 @@ struct CategoryRow: View {
                 Text(scan.formattedSize)
                     .font(AppTheme.mono(12))
                     .foregroundStyle(scan.byteCount > 0 ? AppTheme.text : AppTheme.textTertiary)
+                    .contentTransition(.numericText())
+                    .animation(.easeOut(duration: 0.2), value: scan.byteCount)
 
                 Button(action: onExpand) {
                     Image(systemName: "chevron.down")
@@ -833,18 +870,10 @@ struct CategoryRow: View {
                 .padding(.leading, 36)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(hovered ? AppTheme.surfaceHover : AppTheme.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                        .strokeBorder(
-                            scan.hasSelection ? AppTheme.accent.opacity(0.35) : AppTheme.border,
-                            lineWidth: 1
-                        )
-                )
-        )
+        .background(AppTheme.cardBackground(hovered: hovered, selected: scan.hasSelection))
         .opacity(scan.byteCount == 0 && !scan.exists ? 0.42 : 1)
+        .animation(.easeOut(duration: 0.15), value: hovered)
+        .animation(.easeOut(duration: 0.15), value: scan.hasSelection)
         .onHover { hovered = $0 }
     }
 }

@@ -46,6 +46,13 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
     case instrumentsTraces, metalShaderCaches, loomMiroCaches, telegramMediaDeep
     case dockerDesktopData, xcodeDocCaches, voltaAsdfNode
 
+    /// Cursor / VS Code / Windsurf: раздутый state.vscdb, History, snapshots…
+    case editorStateBloat
+    /// Electron Partitions / Cache в Application Support (Notion и др.)
+    case electronAppJunk
+    /// grype / trivy / сканеры уязвимостей
+    case secToolCaches
+
     // Файлы
     case installerImages, mailDownloads, projectArtifacts
 
@@ -167,6 +174,9 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .xcodeDocCaches: return "Xcode DocSets / Downloads"
         case .voltaAsdfNode: return "volta / asdf / n versions"
         case .xcodeOldDeviceSupport: return "DeviceSupport без активного Xcode"
+        case .editorStateBloat: return L10n.t("state.vscdb / History / snapshots", "state.vscdb / History / snapshots")
+        case .electronAppJunk: return L10n.t("Partitions & Cache in App Support", "Partitions и Cache в App Support")
+        case .secToolCaches: return "grype / trivy / …"
         case .installerImages: return "Downloads *.dmg *.pkg"
         case .mailDownloads: return "Mail Downloads"
         case .projectArtifacts: return "node_modules, .next, target, build…"
@@ -277,6 +287,9 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
         case .dockerDesktopData: return "shippingbox.fill"
         case .xcodeDocCaches: return "books.vertical"
         case .voltaAsdfNode: return "square.stack.3d.up"
+        case .editorStateBloat: return "doc.text.magnifyingglass"
+        case .electronAppJunk: return "app.dashed"
+        case .secToolCaches: return "checkerboard.shield"
         case .installerImages: return "opticaldiscdrive"
         case .mailDownloads: return "envelope"
         case .projectArtifacts: return "folder.badge.gearshape"
@@ -291,7 +304,7 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .screenTimeKnowledge, .groupContainerCaches, .containerAppCaches,
              .oldLargeDownloads, .whatsappMedia, .orphanedAppSupport, .xcodeOldDeviceSupport,
              .dockerDesktopData, .androidSDKCaches, .voltaAsdfNode, .telegramMediaDeep,
-             .xcodeDocCaches, .systemUpdateLeftovers:
+             .xcodeDocCaches, .systemUpdateLeftovers, .editorStateBloat, .electronAppJunk:
             return L10n.t(
                 "Caution: review sub-items before deleting.",
                 "Осторожно: проверьте подпункты перед удалением."
@@ -362,7 +375,8 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .oldLargeDownloads, .chromeProfilesDeep, .officeCaches, .whatsappMedia,
              .cloudStorageCaches, .orphanedAppSupport, .xcodeOldDeviceSupport,
              .dockerDesktopData, .voltaAsdfNode, .telegramMediaDeep, .systemUpdateLeftovers,
-             .xcodeDocCaches, .androidSDKCaches:
+             .xcodeDocCaches, .androidSDKCaches, .editorStateBloat, .electronAppJunk,
+             .secToolCaches:
             return false
         default:
             return true
@@ -401,6 +415,10 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
             return .documentRevisions
         case .containerAppCaches:
             return .containerAppCaches
+        case .editorStateBloat:
+            return .editorStateBloat
+        case .electronAppJunk:
+            return .electronAppJunk
         default:
             return .files
         }
@@ -423,7 +441,8 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .gcloudKubeColima, .projectArtifacts, .uvRyeCache, .gitLfsCache, .xcodeOldDeviceSupport,
              .homeDotCache, .xcodePreviews, .coreSimulatorLogs, .androidSDKCaches,
              .ccacheSccache, .rubyGemsCache, .jupyterCache, .instrumentsTraces,
-             .xcodeDocCaches, .voltaAsdfNode, .dockerDesktopData:
+             .xcodeDocCaches, .voltaAsdfNode, .dockerDesktopData, .editorStateBloat,
+             .secToolCaches:
             return .developer
         case .browserCaches, .messengerCaches, .spotifyCache, .adobeCache, .zoomCache,
              .steamCache, .unityCache, .unrealCache, .blenderCache, .figmaCache, .teamsCache,
@@ -431,7 +450,7 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
              .proVideoApps, .launcherCaches, .obsidianNotes, .onePasswordLogs, .utmVM,
              .installerImages, .mailDownloads, .oldLargeDownloads, .chromeProfilesDeep,
              .officeCaches, .whatsappMedia, .cloudStorageCaches,
-             .loomMiroCaches, .telegramMediaDeep:
+             .loomMiroCaches, .telegramMediaDeep, .electronAppJunk:
             return .apps
         case .groupContainerCaches, .documentRevisions, .containerAppCaches,
              .orphanedAppSupport, .crashReportsDeep:
@@ -444,7 +463,7 @@ enum CleanCategoryID: String, CaseIterable, Identifiable, Codable {
             switch self {
             case .trash, .iosBackups, .xcodeArchives, .documentRevisions, .mlModels,
                  .iMessageAttachments, .projectArtifacts, .docker, .oldLargeDownloads,
-                 .whatsappMedia, .orphanedAppSupport, .xcodeOldDeviceSupport:
+                 .whatsappMedia, .orphanedAppSupport, .xcodeOldDeviceSupport, .editorStateBloat:
                 return .danger
             default:
                 return .caution
@@ -524,6 +543,8 @@ enum CleanStrategy: Equatable {
     case groupContainerCaches
     case documentRevisions
     case containerAppCaches
+    case editorStateBloat
+    case electronAppJunk
 }
 
 struct CleanItem: Identifiable, Hashable {
@@ -616,5 +637,83 @@ enum CleanerError: LocalizedError {
         case .nothingSelected: return L10n.nothingSelectedError()
         case .partiallyFailed(let msg): return msg
         }
+    }
+}
+
+/// Схлопывает вложенные пути, чтобы один и тот же диск не считался дважды.
+enum PathAccounting {
+    static func standardize(_ path: String) -> String {
+        (path as NSString).standardizingPath
+    }
+
+    static func isNested(_ path: String, under parent: String) -> Bool {
+        let p = standardize(path)
+        let par = standardize(parent)
+        guard p != par else { return false }
+        let prefix = par.hasSuffix("/") ? par : par + "/"
+        return p.hasPrefix(prefix)
+    }
+
+    /// Оставляет только корневые пути (потомки отбрасываются).
+    static func collapsePaths(_ paths: [String]) -> [String] {
+        let sorted = Set(paths.map(standardize)).sorted { $0.count < $1.count }
+        var kept: [String] = []
+        for p in sorted {
+            if kept.contains(where: { p == $0 || isNested(p, under: $0) }) { continue }
+            kept.append(p)
+        }
+        return kept
+    }
+
+    /// Сумма размеров без двойного учёта вложенных путей.
+    static func nonOverlappingBytes(_ entries: [(path: String, bytes: Int64)]) -> Int64 {
+        let sorted = entries
+            .map { (standardize($0.path), max(0, $0.bytes)) }
+            .sorted { $0.0.count < $1.0.count }
+        var kept: [(String, Int64)] = []
+        for (p, b) in sorted {
+            if kept.contains(where: { p == $0.0 || isNested(p, under: $0.0) }) { continue }
+            kept.append((p, b))
+        }
+        return kept.reduce(0) { $0 + $1.1 }
+    }
+
+    static func collapseEntries(_ entries: [(String, Int64)]) -> [(String, Int64)] {
+        let sorted = entries
+            .map { (standardize($0.0), max(0, $0.1)) }
+            .sorted { $0.0.count < $1.0.count }
+        var kept: [(String, Int64)] = []
+        for (p, b) in sorted {
+            if kept.contains(where: { p == $0.0 || isNested(p, under: $0.0) }) { continue }
+            kept.append((p, b))
+        }
+        return kept
+    }
+
+    /// Записи для суммарного учёта по категориям (items или path категории).
+    static func sizeEntries(from scans: [CategoryScan]) -> [(path: String, bytes: Int64)] {
+        var out: [(path: String, bytes: Int64)] = []
+        for scan in scans where scan.byteCount > 0 {
+            if !scan.items.isEmpty {
+                out.append(contentsOf: scan.items.map { (path: $0.path, bytes: $0.byteCount) })
+            } else if scan.paths.count == 1 {
+                out.append((path: scan.paths[0], bytes: scan.byteCount))
+            } else if !scan.paths.isEmpty {
+                // Несколько корней без items — берём свёрнутые пути с полной оценкой один раз на корень-лидер.
+                let roots = collapsePaths(scan.paths)
+                if roots.count == 1 {
+                    out.append((path: roots[0], bytes: scan.byteCount))
+                } else {
+                    out.append((path: "__scan__/\(scan.category.rawValue)", bytes: scan.byteCount))
+                }
+            } else {
+                out.append((path: "__scan__/\(scan.category.rawValue)", bytes: scan.byteCount))
+            }
+        }
+        return out
+    }
+
+    static func nonOverlappingTotal(of scans: [CategoryScan]) -> Int64 {
+        nonOverlappingBytes(sizeEntries(from: scans))
     }
 }
